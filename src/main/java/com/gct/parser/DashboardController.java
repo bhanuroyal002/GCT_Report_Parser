@@ -368,11 +368,8 @@ public class DashboardController {
             warningCount += report.warnings;
 
             for (Map<String, Object> module : report.moduleDetails) {
-                String key = firstNonBlank(
-                        String.valueOf(module.get("abi")),
-                        "",
-                        String.valueOf(module.get("name"))
-                ).toLowerCase(Locale.ROOT);
+                String key = (textValue(module.get("abi")) + "|" + textValue(module.get("name")))
+                        .toLowerCase(Locale.ROOT);
                 Map<String, Object> existing = modules.get(key);
 
                 if (existing == null || isRicherModule(module, existing)) {
