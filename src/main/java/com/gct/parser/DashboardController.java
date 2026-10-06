@@ -174,12 +174,11 @@ public class DashboardController {
     }
 
     private ParsedReport parse(MultipartFile file) {
-        String filenameSuite = detectSuite(file.getOriginalFilename());
         List<ReportData> candidates = new ArrayList<>();
         Set<String> seenXml = new HashSet<>();
 
         try {
-            collectReportsFromZip(file.getBytes(), filenameSuite, candidates, seenXml, 0);
+            collectReportsFromZip(file.getBytes(), candidates, seenXml, 0);
         } catch (Exception ignored) {
             // Keep any reports already collected from valid ZIP entries.
         }
@@ -199,7 +198,7 @@ public class DashboardController {
      * Recursively scans ZIP files because Tradefed result archives can contain
      * additional result ZIPs inside the top-level suite ZIP.
      */
-    private void collectReportsFromZip(byte[] zipBytes, String filenameSuite,
+    private void collectReportsFromZip(byte[] zipBytes,
                                        List<ReportData> candidates, Set<String> seenXml,
                                        int depth) throws Exception {
         if (depth > 4) {
@@ -233,7 +232,7 @@ public class DashboardController {
                     }
                 } else if (name.endsWith(".zip")) {
                     try {
-                        collectReportsFromZip(entryBytes, filenameSuite, candidates, seenXml, depth + 1);
+                        collectReportsFromZip(entryBytes, candidates, seenXml, depth + 1);
                     } catch (Exception ignoredNestedZip) {
                         // Ignore unrelated/corrupt nested ZIPs.
                     }
@@ -242,7 +241,7 @@ public class DashboardController {
         }
     }
 
-    private ReportData parseTradefedResult(InputStream input, String filenameSuite) throws Exception {
+    private ReportData parseTradefedResult(InputStream input) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
 
         // Result files can contain a DOCTYPE. Do not allow external entities or external DTDs.
@@ -266,20 +265,7 @@ public class DashboardController {
         }
 
         String xmlSuite = attr(result, "suite_name");
-
-        // CTS-on-GSI reports can contain suite_name="CTS" inside the XML.
-        // When the uploaded filename identifies the report as CTS-on-GSI,
-        // preserve that distinction instead of collapsing it into CTS.
-        String suite;
-        if ("CTS-on-GSI".equals(filenameSuite)) {
-            suite = "CTS-on-GSI";
-        } else if ("CTS-Verifier".equals(filenameSuite)
-                || "CTS_VERIFIER".equalsIgnoreCase(xmlSuite)
-                || "CTS-VERIFIER".equalsIgnoreCase(xmlSuite)) {
-            suite = "CTS-Verifier";
-        } else {
-            suite = firstNonBlank(filenameSuite, xmlSuite);
-        }
+        String suite = normalizeSuiteName(xmlSuite);
 
         if (suite == null) {
             return null;
@@ -711,35 +697,23 @@ public class DashboardController {
                 + " - " + firstNonBlank(version, "unknown") + ")";
     }
 
-    private static String detectSuite(String name) {
-        if (name == null) {
+    /**
+     * The suite identity comes from Tradefed's Result/@suite_name.
+     * Uploaded filenames are intentionally ignored so the parser works
+     * with arbitrary report archive names.
+     */
+    private static String normalizeSuiteName(String suiteName) {
+        if (suiteName == null || suiteName.isBlank()) {
             return null;
         }
 
-        String normalized = name.toLowerCase(Locale.ROOT)
-                .replace("_", "-")
-                .replace(" ", "-")
-                .replace(".zip", "");
-
-        if (normalized.contains("cts-on-gsi") || normalized.contains("ctsongsi")) {
-            return "CTS-on-GSI";
-        }
-
-        // CTS Verifier reports use CTS_VERIFIER in the XML/filename.
-        if (normalized.contains("cts-verifier")
-                || normalized.contains("ctsverifier")
-                || normalized.contains("cts_verifier")) {
+        String normalized = suiteName.trim();
+        if ("CTS_VERIFIER".equalsIgnoreCase(normalized)
+                || "CTS-VERIFIER".equalsIgnoreCase(normalized)
+                || "CTS VERIFIER".equalsIgnoreCase(normalized)) {
             return "CTS-Verifier";
         }
-
-        for (String suite : SUPPORTED) {
-            String key = suite.toLowerCase(Locale.ROOT).replace("-", "");
-            if (normalized.replace("-", "").contains(key)) {
-                return suite;
-            }
-        }
-
-        return null;
+        return normalized;
     }
 
     private static Element directChild(Element parent, String tagName) {
