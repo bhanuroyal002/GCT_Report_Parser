@@ -74,7 +74,7 @@ class DashboardControllerTest {
 
         Map<String, Object> gts = suites.get(0);
         assertThat(gts.get("name")).isEqualTo("GTS");
-        assertThat(gts.get("plan")).isEqualTo("gts");
+        assertThat(gts.get("plan")).isEqualTo("GTS");
         assertThat(gts.get("version")).isEqualTo("14_r2");
         assertThat(gts.get("buildNumber")).isEqualTo("15985168");
         assertThat(gts.get("passed")).isEqualTo(1397);
