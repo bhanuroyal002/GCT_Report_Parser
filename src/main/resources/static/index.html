@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="GCT Report Parser demo dashboard">
+<title>GCT Report Parser</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="brand-mark">G</span><div><strong>GCT Report Parser</strong><small>Certification Intelligence</small></div></div>
+  <span class="demo-badge">DEMO MODE</span>
+</header>
+
+<main class="page">
+  <section class="hero">
+    <div>
+      <span class="eyebrow">ANDROID CERTIFICATION WORKBENCH</span>
+      <h1>From raw reports to <em>release readiness.</em></h1>
+      <p>Upload your certification reports and turn scattered test-suite results into one clear dashboard.</p>
+    </div>
+    <div class="hero-meta">
+      <div><span>DEVICE</span><strong>ATV Demo Device</strong></div>
+      <div><span>BUILD</span><strong id="buildFingerprint">Loading…</strong></div>
+      <div><span>PATCH</span><strong id="securityPatch">Loading…</strong></div>
+    </div>
+  </section>
+
+  <section class="workflow">
+    <div class="step active"><b>01</b><span>Welcome</span></div>
+    <div class="connector"></div>
+    <div class="step active"><b>02</b><span>Upload Reports</span></div>
+    <div class="connector"></div>
+    <div class="step active"><b>03</b><span>Analyze Results</span></div>
+    <div class="connector"></div>
+    <div class="step"><b>04</b><span>Release Readiness</span></div>
+  </section>
+
+  <section class="upload-card">
+    <div class="upload-copy">
+      <span class="section-kicker">STEP 02 · INPUT</span>
+      <h2>Load test-suite reports</h2>
+      <p>Select ZIP/report files for CTS, GTS, TVTS, STS, VTS or CTS-on-GSI.</p>
+    </div>
+    <div class="upload-zone" id="uploadZone">
+      <input id="reportFiles" type="file" multiple accept=".zip,.xml,.json">
+      <div class="upload-icon">↑</div>
+      <strong>Drop reports here</strong>
+      <span>or click to choose files</span>
+      <small>Demo parser: files are simulated and mapped to the dashboard below.</small>
+    </div>
+    <div id="selectedFiles" class="selected-files"></div>
+    <button id="analyzeBtn" class="primary" disabled>Analyze Reports →</button>
+  </section>
+
+  <section class="dashboard-head">
+    <div><span class="section-kicker">STEP 03 · ANALYSIS</span><h2>Certification dashboard</h2><p>One view for suite completion, test counts and release blockers.</p></div>
+    <div class="readiness-chip" id="readiness">Calculating…</div>
+  </section>
+
+  <section class="stats" id="stats"></section>
+
+  <section class="suite-grid" id="suiteGrid"></section>
+
+  <section class="issues-grid">
+    <div class="panel">
+      <div class="panel-title"><div><span class="section-kicker">INCOMPLETE MODULES</span><h3>Modules requiring attention</h3></div><span id="incompleteCount" class="count-badge"></span></div>
+      <div id="incompleteList"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title"><div><span class="section-kicker">FAILURES</span><h3>Failed test cases</h3></div><span id="failureCount" class="count-badge danger"></span></div>
+      <div id="failureList"></div>
+    </div>
+  </section>
+</main>
+
+<footer>GCT Report Parser · Demo application · Built for iterative development</footer>
+<script src="/app.js"></script>
+</body>
+</html>
