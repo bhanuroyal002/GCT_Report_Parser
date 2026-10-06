@@ -334,37 +334,33 @@ public class DashboardController {
             return reports.get(0);
         }
 
-        ParsedReport merged = new ParsedReport(
-                firstNonBlank(reports.stream().map(r -> r.suite).toArray(String[]::new)),
-                0, 0, 0, 0, 0, 0, "INCOMPLETE",
-                "Not detected", "Not detected"
-        );
-
         Map<String, Map<String, Object>> modules = new LinkedHashMap<>();
         Map<String, Map<String, Object>> uniqueFailures = new LinkedHashMap<>();
 
+        String suite = reports.get(0).suite;
+        String plan = null, version = null, buildNumber = null, hostInfo = null;
+        String start = null, end = null, fingerprint = null, patch = null;
+        String release = null, sdk = null, abis = null;
         int warningCount = 0;
 
         for (ParsedReport report : reports) {
-            merged.plan = firstNonBlank(merged.plan, report.plan);
-            merged.version = firstNonBlank(merged.version, report.version);
-            merged.buildNumber = firstNonBlank(merged.buildNumber, report.buildNumber);
-            merged.hostInfo = firstNonBlank(merged.hostInfo, report.hostInfo);
-            merged.start = firstNonBlank(merged.start, report.start);
-            merged.end = firstNonBlank(merged.end, report.end);
-            merged.fingerprint = firstNonBlank(
-                    "Not detected".equals(merged.fingerprint) ? null : merged.fingerprint,
-                    "Not detected".equals(report.fingerprint) ? null : report.fingerprint,
-                    "Not detected"
+            plan = firstNonBlank(plan, report.plan);
+            version = firstNonBlank(version, report.version);
+            buildNumber = firstNonBlank(buildNumber, report.buildNumber);
+            hostInfo = firstNonBlank(hostInfo, report.hostInfo);
+            start = firstNonBlank(start, report.start);
+            end = firstNonBlank(end, report.end);
+            fingerprint = firstNonBlank(
+                    fingerprint,
+                    "Not detected".equals(report.fingerprint) ? null : report.fingerprint
             );
-            merged.patch = firstNonBlank(
-                    "Not detected".equals(merged.patch) ? null : merged.patch,
-                    "Not detected".equals(report.patch) ? null : report.patch,
-                    "Not detected"
+            patch = firstNonBlank(
+                    patch,
+                    "Not detected".equals(report.patch) ? null : report.patch
             );
-            merged.release = firstNonBlank(merged.release, report.release);
-            merged.sdk = firstNonBlank(merged.sdk, report.sdk);
-            merged.abis = firstNonBlank(merged.abis, report.abis);
+            release = firstNonBlank(release, report.release);
+            sdk = firstNonBlank(sdk, report.sdk);
+            abis = firstNonBlank(abis, report.abis);
             warningCount += report.warnings;
 
             for (Map<String, Object> module : report.moduleDetails) {
@@ -401,26 +397,51 @@ public class DashboardController {
             }
         }
 
-        merged.modulesTotal = modules.isEmpty()
-                ? reports.stream().mapToInt(r -> r.modulesTotal).sum()
-                : modules.size();
-        merged.modulesDone = modules.isEmpty()
-                ? reports.stream().mapToInt(r -> r.modulesDone).sum()
-                : done;
+        int modulesTotal;
+        int modulesDone;
+        int passed;
+        int failed;
+        int testCases;
 
         if (!modules.isEmpty()) {
-            merged.passed = modulePassed;
-            merged.failed = moduleFailed;
-            merged.testCases = moduleTests + warningCount;
+            modulesTotal = modules.size();
+            modulesDone = done;
+            passed = modulePassed;
+            failed = moduleFailed;
+            testCases = moduleTests + warningCount;
         } else {
-            merged.passed = reports.stream().mapToInt(r -> r.passed).sum();
-            merged.failed = reports.stream().mapToInt(r -> r.failed).sum();
-            merged.testCases = merged.passed + merged.failed + warningCount;
+            modulesTotal = reports.stream().mapToInt(r -> r.modules).sum();
+            modulesDone = reports.stream().mapToInt(r -> r.completedModules).sum();
+            passed = reports.stream().mapToInt(r -> r.passed).sum();
+            failed = reports.stream().mapToInt(r -> r.failed).sum();
+            testCases = passed + failed + warningCount;
         }
 
-        merged.warnings = warningCount;
+        String mergedFingerprint = firstNonBlank(fingerprint, "Not detected");
+        String mergedPatch = firstNonBlank(patch, "Not detected");
+        String status = modulesTotal > 0 && modulesDone >= modulesTotal
+                ? "COMPLETED" : "INCOMPLETE";
+
+        ParsedReport merged = new ParsedReport(
+                suite, modulesTotal, modulesDone, testCases,
+                passed, failed, warningCount, status,
+                mergedFingerprint, mergedPatch
+        );
+
+        merged.plan = plan;
+        merged.version = version;
+        merged.buildNumber = buildNumber;
+        merged.hostInfo = hostInfo;
+        merged.start = start;
+        merged.end = end;
+        merged.release = release;
+        merged.sdk = sdk;
+        merged.abis = abis;
         merged.moduleDetails = new ArrayList<>(modules.values());
-        merged.failures = new ArrayList<>(uniqueFailures.values());
+
+        for (Map<String, Object> failure : uniqueFailures.values()) {
+            merged.failures.add(failure);
+        }
 
         for (Map<String, Object> module : merged.moduleDetails) {
             if (!Boolean.TRUE.equals(module.get("done"))) {
@@ -429,12 +450,9 @@ public class DashboardController {
                 item.put("module", displayModuleName(module));
                 item.put("failed", intValue(module.get("failed")));
                 item.put("reason", "Module is marked done=false in Tradefed result");
-                merged.incomplete.add(item);
+                merged.incompleteModules.add(item);
             }
         }
-
-        merged.status = merged.modulesTotal > 0 && merged.modulesDone >= merged.modulesTotal
-                ? "COMPLETED" : "INCOMPLETE";
 
         return merged;
     }
