@@ -12,8 +12,9 @@ function render(){
   $("buildFingerprint").textContent=d.buildFingerprint||"Not detected";
   $("securityPatch").textContent=d.securityPatch||"Not detected";
   const o=d.overall||{},s=d.suites||[],inc=d.incompleteModules||[],fail=d.failures||[];
-  const ready=s.length&&Number(o.failed||0)===0&&inc.length===0;
-  $("readiness").textContent=ready?"READY FOR REVIEW":"ATTENTION REQUIRED";
+  const fingerprintMismatch=Boolean(o.fingerprintMismatch);
+  const ready=s.length&&Number(o.failed||0)===0&&inc.length===0&&!fingerprintMismatch;
+  $("readiness").textContent=fingerprintMismatch?"BUILD MISMATCH":(ready?"READY FOR REVIEW":"ATTENTION REQUIRED");
   $("readiness").className="readiness-chip "+(ready?"ready":"attention");
   const rate=((Number(o.passed||0)/Math.max(1,Number(o.totalTests||0)))*100).toFixed(1);
   $("stats").innerHTML=[
