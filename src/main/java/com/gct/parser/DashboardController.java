@@ -611,9 +611,8 @@ public class DashboardController {
     /**
      * Merge reports using test-case identity, not aggregate counters.
      *
-     * If a test fails in an earlier execution and the same test passes in a
-     * later rerun, the later PASS replaces the earlier FAIL. This prevents
-     * rerun results (for example TVTS YouTubeTS) from being double-counted.
+     * A test is considered PASS if it passed in any execution. This prevents
+     * a later rerun failure from overwriting a successful retry.
      */
     private static ParsedReport mergeReports(List<ParsedReport> reports) {
         if (reports == null || reports.isEmpty()) {
@@ -650,8 +649,14 @@ public class DashboardController {
             moduleDoneStates.putAll(report.moduleDoneStates);
 
             for (TestResultData test : report.testResults) {
-                // Later report wins. This is the rerun reconciliation rule.
-                testResults.put(test.key, test);
+                // A test is considered PASS if it passed in any execution.
+                // A later FAIL must not overwrite an earlier PASS from a rerun.
+                TestResultData existing = testResults.get(test.key);
+                if (existing == null) {
+                    testResults.put(test.key, test);
+                } else {
+                    testResults.put(test.key, mergeTestResult(existing, test));
+                }
             }
 
             for (Map<String, Object> module : report.moduleDetails) {
@@ -786,6 +791,28 @@ public class DashboardController {
         merged.testResults.addAll(testResults.values());
 
         return merged;
+    }
+
+    /**
+     * Reconcile repeated executions of the same test case.
+     *
+     * Certification reruns are attempts to recover failed tests. Therefore,
+     * if the same test is PASS in any report, the final state is PASS even if
+     * another report contains FAIL for that same test. If no PASS exists,
+     * retain the latest observed result.
+     */
+    private static TestResultData mergeTestResult(TestResultData existing, TestResultData current) {
+        boolean existingPass = "pass".equalsIgnoreCase(existing.result);
+        boolean currentPass = "pass".equalsIgnoreCase(current.result);
+
+        if (existingPass) {
+            return existing;
+        }
+        if (currentPass) {
+            return current;
+        }
+
+        return current;
     }
 
     private static boolean isRicherModule(Map<String, Object> candidate, Map<String, Object> current) {
