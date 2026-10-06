@@ -9,19 +9,17 @@ function renderFiles(){
 }
 function render(){
   const d=state.data;if(!d)return;
-  $("buildFingerprint").textContent=d.buildFingerprint||"Not detected";
-  $("securityPatch").textContent=d.securityPatch||"Not detected";
-  $("androidVersion").textContent=d.androidVersion||"Not detected";
   const o=d.overall||{},s=d.suites||[],inc=d.incompleteModules||[],fail=d.failures||[];
+  const builds=d.builds||[];
   const fingerprintMismatch=Boolean(o.fingerprintMismatch);
-  $("buildMismatch").innerHTML=fingerprintMismatch?(`
-    <div class="mismatch-panel">
-      <div class="panel-title"><div><span class="section-kicker">BUILD MISMATCH</span><h3>Test suite build fingerprints</h3></div><span class="count-badge danger">${format(s.length)} builds</span></div>
-      <p>Reports with different build fingerprints were kept separate and were not merged.</p>
-      <div class="fingerprint-table">
-        ${s.map(x=>`<div class="fingerprint-row"><strong>${esc(x.name)}</strong><span>${esc(x.fingerprint||"Not detected")}</span></div>`).join("")}
-      </div>
-    </div>`):"";
+  const primaryBuild=builds[0]||{};
+  $("buildFingerprint").textContent=fingerprintMismatch?"MULTIPLE BUILDS DETECTED":(primaryBuild.fingerprint||d.buildFingerprint||"Not detected");
+  $("securityPatch").textContent=fingerprintMismatch?"MULTIPLE":(primaryBuild.securityPatch||d.securityPatch||"Not detected");
+  $("androidVersion").textContent=fingerprintMismatch?"MULTIPLE":(primaryBuild.androidVersion||d.androidVersion||"Not detected");
+
+  $("buildMismatch").innerHTML=fingerprintMismatch?(
+    `<div class="mismatch-panel"><div class="panel-title"><div><span class="section-kicker">BUILD MISMATCH</span><h3>Build information</h3></div><span class="count-badge danger">${format(builds.length)} builds</span></div><p>Reports with the same build fingerprint are grouped into one build entry.</p><div class="fingerprint-table">${builds.map((x,i)=>`<div class="fingerprint-row"><strong>Build ${String.fromCharCode(65+i)}</strong><span><b>Fingerprint:</b> ${esc(x.fingerprint||"Not detected")}<br><b>Android:</b> ${esc(x.androidVersion||"Not detected")}<br><b>Security Patch:</b> ${esc(x.securityPatch||"Not detected")}</span></div>`).join("")}</div></div>`
++  ):"";
 
   const ready=s.length&&Number(o.failed||0)===0&&inc.length===0&&!fingerprintMismatch;
   $("readiness").textContent=fingerprintMismatch?"BUILD MISMATCH":(ready?"READY FOR REVIEW":"ATTENTION REQUIRED");
