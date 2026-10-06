@@ -221,15 +221,15 @@ public final class HtmlReportBuilder {
     }
 
     private static String field(String label, String value) {
-        return "<div class="field"><label>" + e(label) + "</label><strong>" + e(value) + "</strong></div>";
+        return "<div class=\"field\"><label>" + e(label) + "</label><strong>" + e(value) + "</strong></div>";
     }
 
     private static String metric(String label, Object value) {
-        return "<div class="metric"><label>" + e(label) + "</label><strong>" + e(value) + "</strong></div>";
+        return "<div class=\"metric\"><label>" + e(label) + "</label><strong>" + e(value) + "</strong></div>";
     }
 
     private static String info(String label, String value) {
-        return "<div class="info"><label>" + e(label) + "</label><div>" + e(value) + "</div></div>";
+        return "<div class=\"info\"><label>" + e(label) + "</label><div>" + e(value) + "</div></div>";
     }
 
     @SuppressWarnings("unchecked")
