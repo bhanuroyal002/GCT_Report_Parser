@@ -1,33 +1,21 @@
 # GCT Report Parser
 
-Demo application for parsing Android certification/test-suite reports and presenting a unified readiness dashboard.
+Spring Boot web application for combining Android certification-suite reports into a unified release-readiness dashboard.
 
-## Initial Demo Scope
+## Workflow
+1. Welcome page.
+2. Upload ZIP reports for CTS, GTS, TVTS, STS, VTS and CTS-on-GSI.
+3. Analyze uploaded ZIPs on the server and build suite-level metrics, completion status, failure markers, build fingerprint and security patch.
+4. Highlight incomplete modules and failed cases.
+5. Download the dashboard as a standalone HTML report.
 
-V1 focuses on the basic workflow:
+## Run
+Requires Java 17+ and Maven 3.9+.
 
-1. Open the dashboard.
-2. Upload/select test-suite report files.
-3. Parse demo report data.
-4. Show suite-level and overall test statistics.
-5. Highlight incomplete modules and failed cases.
+    mvn clean test
+    mvn spring-boot:run
 
-## Planned Test Suites
+Open `http://localhost:8080`.
 
-- CTS
-- GTS
-- TVTS
-- STS
-- VTS
-- CTS-on-GSI
-
-## Planned Technology
-
-- Java 17
-- Spring Boot
-- Maven
-- PostgreSQL
-- HTML/CSS/JavaScript
-- Docker
-
-The first version intentionally uses demo data so the UI and workflow can be validated before adding real report parsing.
+## Parser scope
+The first real parser version is dependency-light and heuristic. It detects the suite from the ZIP filename and scans XML/JSON/TXT entries for result/failure/module markers and build metadata. Android Tradefed report formats vary by release, so suite-specific XML parsing should be added for production-grade accuracy.
