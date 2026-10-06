@@ -13,11 +13,21 @@ class DashboardControllerTest {
     DashboardController controller;
 
     @Test
-    void dashboardContainsExpectedSuites() {
+    void dashboardStartsEmptyUntilReportsAreAnalyzed() {
         var dashboard = controller.dashboard();
-        var suites = (java.util.List<?>) dashboard.get("suites");
-        assertThat(suites).hasSize(6);
-        assertThat(dashboard.get("buildFingerprint")).isNotNull();
-        assertThat(dashboard.get("securityPatch")).isEqualTo("2026-09-05");
+
+        assertThat(dashboard).containsKeys(
+                "generatedAt",
+                "buildFingerprint",
+                "securityPatch",
+                "overall",
+                "suites",
+                "incompleteModules",
+                "failures"
+        );
+
+        assertThat((java.util.List<?>) dashboard.get("suites")).isEmpty();
+        assertThat((java.util.List<?>) dashboard.get("incompleteModules")).isEmpty();
+        assertThat((java.util.List<?>) dashboard.get("failures")).isEmpty();
     }
 }
