@@ -15,6 +15,8 @@ public final class HtmlReportBuilder {
         int total = number(overall.get("totalTests"));
         int passed = number(overall.get("passed"));
         int failed = number(overall.get("failed"));
+        int assumptionFailures = number(overall.get("assumptionFailures"));
+        int ignored = number(overall.get("ignored"));
         boolean fingerprintMismatch = Boolean.TRUE.equals(overall.get("fingerprintMismatch"));
         boolean overallPass = failed == 0 && incomplete.isEmpty() && !fingerprintMismatch;
 
@@ -62,7 +64,7 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
         h.append("</section>");
 
         h.append("<section class='section'><div class='title'>Suite summary</div><div class='table-wrap'><table>")
-                .append("<thead><tr><th>Suite</th><th>Mods</th><th>Done</th><th>Inc</th><th>Cases</th><th>Pass</th><th>Fail</th></tr></thead><tbody>");
+                .append("<thead><tr><th>Suite</th><th>Mods</th><th>Done</th><th>Inc</th><th>Passed</th><th>Failed</th><th>Assumption Failure</th><th>Ignored</th><th>Total Tests</th></tr></thead><tbody>");
 
         for (Map<String, Object> suite : suites) {
             int mods = number(suite.get("modules"));
@@ -71,11 +73,15 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
             int cases = number(suite.get("testCases"));
             int pass = number(suite.get("passed"));
             int fail = number(suite.get("failed"));
+            int assumption = number(suite.get("assumptionFailures"));
+            int ignoredCases = number(suite.get("ignored"));
             h.append("<tr><td><strong>").append(e(text(suite.get("name")))).append("</strong></td>")
                     .append("<td>").append(mods).append("</td><td>").append(done).append("</td>")
                     .append("<td class='").append(inc == 0 ? "pass-text" : "inc-text").append("'>").append(inc).append("</td>")
-                    .append("<td>").append(cases).append("</td><td class='pass-text'>").append(pass).append("</td>")
-                    .append("<td class='").append(fail == 0 ? "pass-text" : "fail-text").append("'>").append(fail).append("</td></tr>");
+                    .append("<td class='pass-text'>").append(pass).append("</td>")
+                    .append("<td class='").append(fail == 0 ? "pass-text" : "fail-text").append("'>").append(fail).append("</td>")
+                    .append("<td>").append(assumption).append("</td><td>").append(ignoredCases).append("</td>")
+                    .append("<td>").append(cases).append("</td></tr>");
         }
         h.append("</tbody></table></div></section>");
 
