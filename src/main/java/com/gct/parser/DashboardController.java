@@ -254,6 +254,8 @@ public class DashboardController {
         NodeList moduleNodes = result.getElementsByTagName("Module");
         int modulePassTotal = 0;
         int moduleFailTotal = 0;
+        int moduleAssumptionTotal = 0;
+        int moduleIgnoredTotal = 0;
 
         for (int i = 0; i < moduleNodes.getLength(); i++) {
             Element module = (Element) moduleNodes.item(i);
@@ -288,8 +290,10 @@ public class DashboardController {
                     } else if ("assumption_failure".equalsIgnoreCase(resultValue)
                             || "assumption-failure".equalsIgnoreCase(resultValue)) {
                         moduleAssumptionFailures++;
+                        moduleAssumptionTotal++;
                     } else if ("ignored".equalsIgnoreCase(resultValue)) {
                         moduleIgnored++;
+                        moduleIgnoredTotal++;
 
                         Element failure = directChild(test, "Failure");
                         String message = failure == null ? "" : firstNonBlank(
@@ -336,6 +340,14 @@ public class DashboardController {
         }
 
         // Some result versions omit summary module counts. Fall back to actual Module elements.
+        // Likewise derive assumption-failure/ignored counts from individual tests when
+        // those summary attributes are absent or incomplete.
+        if (assumptionFailures == 0 && moduleAssumptionTotal > 0) {
+            assumptionFailures = moduleAssumptionTotal;
+        }
+        if (ignored == 0 && moduleIgnoredTotal > 0) {
+            ignored = moduleIgnoredTotal;
+        }
         if (modulesTotal == 0) {
             modulesTotal = modules.size();
         }
