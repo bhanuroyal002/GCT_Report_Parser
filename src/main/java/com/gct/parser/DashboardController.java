@@ -418,11 +418,6 @@ public class DashboardController {
                         continue;
                     }
 
-                    if ("StackTrace".equals(name) && inFailure && currentTest != null) {
-                        inStackTrace = true;
-                        currentStackTrace.setLength(0);
-                    }
-
                 } else if (event == XMLStreamConstants.CHARACTERS
                         || event == XMLStreamConstants.CDATA) {
                     if (inStackTrace) {
