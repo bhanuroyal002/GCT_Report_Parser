@@ -82,7 +82,10 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
                 h.append("<div class='issue'><strong>[")
                         .append(e(text(item.get("suite")))).append("] ")
                         .append(e(text(item.get("module")))).append("</strong>");
-                if (!text(item.get("reason")).isBlank()) {
+                int failedModules = number(item.get("failed"));
+                if (failedModules > 0) {
+                    h.append("<span>fail=").append(failedModules).append("</span>");
+                } else if (!text(item.get("reason")).isBlank()) {
                     h.append("<span>").append(e(text(item.get("reason")))).append("</span>");
                 }
                 h.append("</div>");
