@@ -63,6 +63,19 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
         }
         h.append("</section>");
 
+        if (fingerprintMismatch) {
+            h.append("<section class='section'><div class='title'>Build fingerprint by test suite</div>");
+            h.append("<div class='issue'><span>Reports from different build fingerprints were kept separate and were not merged.</span></div>");
+            for (Map<String, Object> suite : suites) {
+                h.append("<div class='issue'><strong>")
+                        .append(e(text(suite.get("name"))))
+                        .append("</strong><span>")
+                        .append(e(text(suite.get("fingerprint"))))
+                        .append("</span></div>");
+            }
+            h.append("</section>");
+        }
+
         h.append("<section class='section'><div class='title'>Suite summary</div><div class='table-wrap'><table>")
                 .append("<thead><tr><th>Suite</th><th>Mods</th><th>Done</th><th>Inc</th><th>Passed</th><th>Failed</th><th>Assumption Failure</th><th>Ignored</th><th>Total Tests</th></tr></thead><tbody>");
 
