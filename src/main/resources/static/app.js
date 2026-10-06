@@ -34,29 +34,6 @@ function render(){
     </article>`
   }).join("");
 
-  $("suiteDetails").innerHTML=s.map(x=>{
-    const details=x.moduleDetails||[];
-    return `<section class="detail-card">
-      <div class="detail-head">
-        <div><span class="section-kicker">${esc(x.name)} · ${esc(x.plan||"plan")}</span>
-        <h3>${esc(x.version||"")} / ${esc(x.buildNumber||"")}</h3></div>
-        <span class="detail-result">${format(x.passed)} passed · ${format(x.failed)} failed</span>
-      </div>
-      <div class="summary-grid">
-        <div><span>HOST</span><strong>${esc(x.hostInfo||"Not detected")}</strong></div>
-        <div><span>START / END</span><strong>${esc(x.start||"Not detected")} / ${esc(x.end||"Not detected")}</strong></div>
-        <div><span>FINGERPRINT</span><strong>${esc(x.fingerprint||"Not detected")}</strong></div>
-        <div><span>SECURITY PATCH</span><strong>${esc(x.securityPatch||"Not detected")}</strong></div>
-        <div><span>RELEASE (SDK)</span><strong>${esc(x.release||"Not detected")} (${esc(x.sdk||"")})</strong></div>
-        <div><span>ABIs</span><strong>${esc(x.abis||"Not detected")}</strong></div>
-      </div>
-      <div class="module-table-wrap">
-        <table class="module-table"><thead><tr><th>Module</th><th>Passed</th><th>Failed</th><th>Total Tests</th><th>Done</th></tr></thead>
-        <tbody>${details.map(m=>`<tr class="${m.done?"":"incomplete"}"><td>${esc((m.abi?m.abi+" ":"")+m.name)}</td><td>${format(m.passed)}</td><td>${format(m.failed)}</td><td>${format(m.totalTests)}</td><td>${m.done?"true":"false"}</td></tr>`).join("")}</tbody></table>
-      </div>
-    </section>`
-  }).join("");
-
   $("incompleteCount").textContent=inc.length;
   $("failureCount").textContent=fail.length;
   $("incompleteList").innerHTML=inc.length?inc.map(x=>`<div class="issue-row"><strong>${esc(x.suite)} · ${esc(x.module)}</strong><span>${esc(x.reason)}</span></div>`).join(""):"<div class='empty'>No incomplete modules.</div>";
