@@ -265,7 +265,8 @@ public class DashboardController {
         }
 
         String xmlSuite = attr(result, "suite_name");
-        String suite = normalizeSuiteName(xmlSuite);
+        String suitePlan = attr(result, "suite_plan");
+        String suite = normalizeSuiteName(xmlSuite, suitePlan);
 
         if (suite == null) {
             return null;
@@ -702,17 +703,26 @@ public class DashboardController {
      * Uploaded filenames are intentionally ignored so the parser works
      * with arbitrary report archive names.
      */
-    private static String normalizeSuiteName(String suiteName) {
+    private static String normalizeSuiteName(String suiteName, String suitePlan) {
         if (suiteName == null || suiteName.isBlank()) {
             return null;
         }
 
         String normalized = suiteName.trim();
+
+        // CTS-on-GSI reports use suite_name="CTS", but their suite_plan
+        // explicitly identifies the execution as cts-on-gsi.
+        if ("CTS".equalsIgnoreCase(normalized)
+                && "cts-on-gsi".equalsIgnoreCase(suitePlan == null ? "" : suitePlan.trim())) {
+            return "CTS-on-GSI";
+        }
+
         if ("CTS_VERIFIER".equalsIgnoreCase(normalized)
                 || "CTS-VERIFIER".equalsIgnoreCase(normalized)
                 || "CTS VERIFIER".equalsIgnoreCase(normalized)) {
             return "CTS-Verifier";
         }
+
         return normalized;
     }
 
