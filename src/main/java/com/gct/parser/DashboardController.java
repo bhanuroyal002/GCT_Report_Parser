@@ -33,15 +33,18 @@ public class DashboardController {
         String fingerprint = "Not detected";
         String patch = "Not detected";
 
+        // Multiple ZIPs can belong to the same suite. Parse every ZIP first,
+        // then merge reports by suite so the dashboard has one row per suite.
+        Map<String, List<ParsedReport>> reportsBySuite = new LinkedHashMap<>();
+
         for (MultipartFile file : files) {
             ParsedReport parsed = parse(file);
             if (parsed.suite == null) {
                 continue;
             }
 
-            suites.add(parsed.toMap());
-            incomplete.addAll(parsed.incompleteModules);
-            failures.addAll(parsed.failures);
+            String suiteKey = parsed.suite.toLowerCase(Locale.ROOT);
+            reportsBySuite.computeIfAbsent(suiteKey, k -> new ArrayList<>()).add(parsed);
 
             if (!"Not detected".equals(parsed.fingerprint)) {
                 fingerprint = parsed.fingerprint;
@@ -49,6 +52,13 @@ public class DashboardController {
             if (!"Not detected".equals(parsed.patch)) {
                 patch = parsed.patch;
             }
+        }
+
+        for (List<ParsedReport> reports : reportsBySuite.values()) {
+            ParsedReport merged = mergeReports(reports);
+            suites.add(merged.toMap());
+            incomplete.addAll(merged.incompleteModules);
+            failures.addAll(merged.failures);
         }
 
         int total = suites.stream().mapToInt(s -> number(s.get("testCases"))).sum();
@@ -307,6 +317,169 @@ public class DashboardController {
         data.failures = failures;
         data.incomplete = incomplete;
         return data;
+    }
+
+    /**
+     * Merge multiple result ZIPs belonging to the same suite.
+     *
+     * Modules are treated as the unit of uniqueness. If the same module appears
+     * in more than one ZIP, keep the richer record instead of counting it twice.
+     * This is important when users upload split/partial result archives.
+     */
+    private static ParsedReport mergeReports(List<ParsedReport> reports) {
+        if (reports == null || reports.isEmpty()) {
+            return ParsedReport.unknown();
+        }
+        if (reports.size() == 1) {
+            return reports.get(0);
+        }
+
+        ParsedReport merged = new ParsedReport(
+                firstNonBlank(reports.stream().map(r -> r.suite).toArray(String[]::new)),
+                0, 0, 0, 0, 0, 0, "INCOMPLETE",
+                "Not detected", "Not detected"
+        );
+
+        Map<String, Map<String, Object>> modules = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> uniqueFailures = new LinkedHashMap<>();
+
+        int warningCount = 0;
+
+        for (ParsedReport report : reports) {
+            merged.plan = firstNonBlank(merged.plan, report.plan);
+            merged.version = firstNonBlank(merged.version, report.version);
+            merged.buildNumber = firstNonBlank(merged.buildNumber, report.buildNumber);
+            merged.hostInfo = firstNonBlank(merged.hostInfo, report.hostInfo);
+            merged.start = firstNonBlank(merged.start, report.start);
+            merged.end = firstNonBlank(merged.end, report.end);
+            merged.fingerprint = firstNonBlank(
+                    "Not detected".equals(merged.fingerprint) ? null : merged.fingerprint,
+                    "Not detected".equals(report.fingerprint) ? null : report.fingerprint,
+                    "Not detected"
+            );
+            merged.patch = firstNonBlank(
+                    "Not detected".equals(merged.patch) ? null : merged.patch,
+                    "Not detected".equals(report.patch) ? null : report.patch,
+                    "Not detected"
+            );
+            merged.release = firstNonBlank(merged.release, report.release);
+            merged.sdk = firstNonBlank(merged.sdk, report.sdk);
+            merged.abis = firstNonBlank(merged.abis, report.abis);
+            warningCount += report.warnings;
+
+            for (Map<String, Object> module : report.moduleDetails) {
+                String key = firstNonBlank(
+                        String.valueOf(module.get("abi")),
+                        "",
+                        String.valueOf(module.get("name"))
+                ).toLowerCase(Locale.ROOT);
+                Map<String, Object> existing = modules.get(key);
+
+                if (existing == null || isRicherModule(module, existing)) {
+                    modules.put(key, new LinkedHashMap<>(module));
+                }
+            }
+
+            for (Map<String, Object> failure : report.failures) {
+                String key = String.join("|",
+                        textValue(failure.get("suite")),
+                        textValue(failure.get("module")),
+                        textValue(failure.get("testCase"))
+                );
+                uniqueFailures.putIfAbsent(key, failure);
+            }
+        }
+
+        int modulePassed = 0;
+        int moduleFailed = 0;
+        int moduleTests = 0;
+        int done = 0;
+
+        for (Map<String, Object> module : modules.values()) {
+            modulePassed += intValue(module.get("passed"));
+            moduleFailed += intValue(module.get("failed"));
+            moduleTests += intValue(module.get("totalTests"));
+            if (Boolean.TRUE.equals(module.get("done"))) {
+                done++;
+            }
+        }
+
+        merged.modulesTotal = modules.isEmpty()
+                ? reports.stream().mapToInt(r -> r.modulesTotal).sum()
+                : modules.size();
+        merged.modulesDone = modules.isEmpty()
+                ? reports.stream().mapToInt(r -> r.modulesDone).sum()
+                : done;
+
+        if (!modules.isEmpty()) {
+            merged.passed = modulePassed;
+            merged.failed = moduleFailed;
+            merged.testCases = moduleTests + warningCount;
+        } else {
+            merged.passed = reports.stream().mapToInt(r -> r.passed).sum();
+            merged.failed = reports.stream().mapToInt(r -> r.failed).sum();
+            merged.testCases = merged.passed + merged.failed + warningCount;
+        }
+
+        merged.warnings = warningCount;
+        merged.moduleDetails = new ArrayList<>(modules.values());
+        merged.failures = new ArrayList<>(uniqueFailures.values());
+
+        for (Map<String, Object> module : merged.moduleDetails) {
+            if (!Boolean.TRUE.equals(module.get("done"))) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("suite", merged.suite);
+                item.put("module", displayModuleName(module));
+                item.put("failed", intValue(module.get("failed")));
+                item.put("reason", "Module is marked done=false in Tradefed result");
+                merged.incomplete.add(item);
+            }
+        }
+
+        merged.status = merged.modulesTotal > 0 && merged.modulesDone >= merged.modulesTotal
+                ? "COMPLETED" : "INCOMPLETE";
+
+        return merged;
+    }
+
+    private static boolean isRicherModule(Map<String, Object> candidate, Map<String, Object> current) {
+        boolean candidateDone = Boolean.TRUE.equals(candidate.get("done"));
+        boolean currentDone = Boolean.TRUE.equals(current.get("done"));
+
+        if (candidateDone != currentDone) {
+            return candidateDone;
+        }
+
+        int candidateTests = intValue(candidate.get("totalTests"));
+        int currentTests = intValue(current.get("totalTests"));
+        if (candidateTests != currentTests) {
+            return candidateTests > currentTests;
+        }
+
+        int candidateFailed = intValue(candidate.get("failed"));
+        int currentFailed = intValue(current.get("failed"));
+        return candidateFailed > currentFailed;
+    }
+
+    private static String displayModuleName(Map<String, Object> module) {
+        String abi = textValue(module.get("abi"));
+        String name = textValue(module.get("name"));
+        return abi.isBlank() ? name : abi + " " + name;
+    }
+
+    private static int intValue(Object value) {
+        if (value instanceof Number n) {
+            return n.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value));
+        } catch (Exception ignored) {
+            return 0;
+        }
+    }
+
+    private static String textValue(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 
     private static String buildHostInfo(String host, String os, String version) {
