@@ -15,7 +15,8 @@ public final class HtmlReportBuilder {
         int total = number(overall.get("totalTests"));
         int passed = number(overall.get("passed"));
         int failed = number(overall.get("failed"));
-        boolean overallPass = failed == 0 && incomplete.isEmpty();
+        boolean fingerprintMismatch = Boolean.TRUE.equals(overall.get("fingerprintMismatch"));
+        boolean overallPass = failed == 0 && incomplete.isEmpty() && !fingerprintMismatch;
 
         String fingerprint = firstValue(dashboard.get("buildFingerprint"), suites, "fingerprint");
         String patch = firstValue(dashboard.get("securityPatch"), suites, "securityPatch");
@@ -48,13 +49,17 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
         h.append("<div class='header'><div><h1>GCT Certification Dashboard</h1>")
                 .append("<div class='subtitle'>GCT test execution summary for stakeholder review</div></div>")
                 .append("<div class='status ").append(overallPass ? "pass" : "fail").append("'>")
-                .append(overallPass ? "PASS" : "ATTENTION REQUIRED").append("</div></div>");
+                .append(fingerprintMismatch ? "BUILD MISMATCH" : (overallPass ? "PASS" : "ATTENTION REQUIRED")).append("</div></div>");
 
         h.append("<section class='section'><div class='title'>Build Information</div><div class='summary'>")
                 .append(field("Build fingerprint", fingerprint))
                 .append(field("Security patch", patch))
                 .append(field("Android version", androidVersion))
-                .append("</div></section>");
+                .append("</div>");
+        if (fingerprintMismatch) {
+            h.append("<div class='issue'><strong>Build mismatch detected</strong><span>Reports from different build fingerprints were uploaded. They were kept separate and were not merged.</span></div>");
+        }
+        h.append("</section>");
 
         h.append("<section class='section'><div class='title'>Suite summary</div><div class='table-wrap'><table>")
                 .append("<thead><tr><th>Suite</th><th>Mods</th><th>Done</th><th>Inc</th><th>Cases</th><th>Pass</th><th>Fail</th></tr></thead><tbody>");
