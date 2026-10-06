@@ -93,30 +93,30 @@ public final class HtmlReportBuilder {
                 <div class="wrap">
                 """);
 
-        html.append("<header class="header">")
-                .append("<div><div class="eyebrow">ANDROID CERTIFICATION · STAKEHOLDER REPORT</div>")
+        html.append("<header class='header'>")
+                .append("<div><div class='eyebrow'>ANDROID CERTIFICATION · STAKEHOLDER REPORT</div>")
                 .append("<h1>GCT Certification Dashboard</h1>")
-                .append("<div class="subtitle">Release-readiness summary generated from the uploaded certification reports.</div></div>")
-                .append("<div class="status ").append(overallPass ? "pass" : "attention").append("">")
+                .append("<div class='subtitle'>Release-readiness summary generated from the uploaded certification reports.</div></div>")
+                .append("<div class='status ").append(overallPass ? "pass" : "attention").append("'>")
                 .append("<span>OVERALL STATUS</span><strong>").append(e(overallStatus)).append("</strong></div>")
                 .append("</header>");
 
-        html.append("<section class="section"><div class="section-title">REPORT SUMMARY</div>")
-                .append("<div class="identity">")
+        html.append("<section class='section'><div class='section-title'>REPORT SUMMARY</div>")
+                .append("<div class='identity'>")
                 .append(field("TEST SUITE", testSuites))
                 .append(field("GENERATED", generated))
                 .append(field("BUILD FINGERPRINT", text(dashboard.get("buildFingerprint"))))
                 .append(field("SECURITY PATCH", text(dashboard.get("securityPatch"))))
                 .append("</div></section>");
 
-        html.append("<section class="section"><div class="section-title">OVERALL RESULTS</div>")
-                .append("<div class="metrics">")
+        html.append("<section class='section'><div class='section-title'>OVERALL RESULTS</div>")
+                .append("<div class='metrics'>")
                 .append(metric("TOTAL TESTS", total))
                 .append(metric("PASSED", passed))
                 .append(metric("FAILED", failed))
                 .append(metric("INCOMPLETE MODULES", blocked))
                 .append("</div>")
-                .append("<div class="suite-info">")
+                .append("<div class='suite-info'>")
                 .append(info("WARNINGS", String.valueOf(warnings)))
                 .append(info("PASS RATE", total == 0 ? "0%" : String.format(Locale.ROOT, "%.1f%%", passed * 100.0 / total)))
                 .append("</div></section>");
@@ -125,12 +125,12 @@ public final class HtmlReportBuilder {
             html.append(renderSuite(suite));
         }
 
-        html.append("<section class="section"><div class="section-title">FAILED TEST CASES</div>");
+        html.append("<section class='section'><div class='section-title'>FAILED TEST CASES</div>");
         if (failures.isEmpty()) {
-            html.append("<div class="empty">No failed test cases detected.</div>");
+            html.append("<div class='empty'>No failed test cases detected.</div>");
         } else {
             for (Map<String, Object> failure : failures) {
-                html.append("<div class="issue"><strong>")
+                html.append("<div class='issue'><strong>")
                         .append(e(text(failure.get("suite")))).append(" · ")
                         .append(e(text(failure.get("module")))).append(" · ")
                         .append(e(text(failure.get("testCase"))))
@@ -141,12 +141,12 @@ public final class HtmlReportBuilder {
         }
         html.append("</section>");
 
-        html.append("<section class="section"><div class="section-title">INCOMPLETE MODULES</div>");
+        html.append("<section class='section'><div class='section-title'>INCOMPLETE MODULES</div>");
         if (incomplete.isEmpty()) {
-            html.append("<div class="empty">No incomplete modules detected. All reported modules are complete.</div>");
+            html.append("<div class='empty'>No incomplete modules detected. All reported modules are complete.</div>");
         } else {
             for (Map<String, Object> item : incomplete) {
-                html.append("<div class="issue"><strong>")
+                html.append("<div class='issue'><strong>")
                         .append(e(text(item.get("suite")))).append(" · ")
                         .append(e(text(item.get("module"))))
                         .append("</strong><span>")
@@ -156,7 +156,7 @@ public final class HtmlReportBuilder {
         }
         html.append("</section>");
 
-        html.append("<div class="footer">GCT Report Parser · Generated ")
+        html.append("<div class='footer'>GCT Report Parser · Generated ")
                 .append(e(generated))
                 .append(" · This report is intended for certification/release-readiness stakeholder review.</div>")
                 .append("</div></body></html>");
@@ -176,20 +176,20 @@ public final class HtmlReportBuilder {
         String status = pass ? "PASS" : "ATTENTION";
 
         StringBuilder html = new StringBuilder();
-        html.append("<section class="section"><div class="suite-header"><div>")
-                .append("<div class="section-title">TEST SUITE</div>")
-                .append("<div class="suite-name">").append(e(text(suite.get("name")))).append("</div>")
-                .append("</div><span class="pill ").append(pass ? "pass" : "warn").append("">")
+        html.append("<section class='section'><div class='suite-header'><div>")
+                .append("<div class='section-title'>TEST SUITE</div>")
+                .append("<div class='suite-name'>").append(e(text(suite.get("name")))).append("</div>")
+                .append("</div><span class='pill ").append(pass ? "pass" : "warn").append("'>")
                 .append(status).append("</span></div>");
 
-        html.append("<div class="metrics">")
+        html.append("<div class='metrics'>")
                 .append(metric("TOTAL TESTS", tests))
                 .append(metric("PASSED", passed))
                 .append(metric("FAILED", failed))
                 .append(metric("MODULES", completed + " / " + modules))
                 .append("</div>");
 
-        html.append("<div class="suite-info">")
+        html.append("<div class='suite-info'>")
                 .append(info("SUITE / PLAN", text(suite.get("name")) + " / " + text(suite.get("plan"))))
                 .append(info("SUITE / BUILD", text(suite.get("version")) + " / " + text(suite.get("buildNumber"))))
                 .append(info("HOST INFO", text(suite.get("hostInfo"))))
@@ -203,10 +203,10 @@ public final class HtmlReportBuilder {
 
         List<Map<String, Object>> modulesList = maps(suite.get("moduleDetails"));
         if (!modulesList.isEmpty()) {
-            html.append("<div class="table-wrap"><table><thead><tr><th>Module</th><th>Passed</th><th>Failed</th><th>Total</th><th>Done</th></tr></thead><tbody>");
+            html.append("<div class='table-wrap'><table><thead><tr><th>Module</th><th>Passed</th><th>Failed</th><th>Total</th><th>Done</th></tr></thead><tbody>");
             for (Map<String, Object> module : modulesList) {
                 boolean done = Boolean.TRUE.equals(module.get("done"));
-                html.append("<tr class="").append(done ? "" : "bad").append("">")
+                html.append("<tr class='").append(done ? "" : "bad").append("'>")
                         .append("<td>").append(e((text(module.get("abi")) + " " + text(module.get("name"))).trim())).append("</td>")
                         .append("<td>").append(number(module.get("passed"))).append("</td>")
                         .append("<td>").append(number(module.get("failed"))).append("</td>")
