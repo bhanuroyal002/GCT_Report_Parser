@@ -79,12 +79,16 @@ public class DashboardController {
         int total = suites.stream().mapToInt(s -> number(s.get("testCases"))).sum();
         int passed = suites.stream().mapToInt(s -> number(s.get("passed"))).sum();
         int failed = suites.stream().mapToInt(s -> number(s.get("failed"))).sum();
+        int assumptionFailures = suites.stream().mapToInt(s -> number(s.get("assumptionFailures"))).sum();
+        int ignored = suites.stream().mapToInt(s -> number(s.get("ignored"))).sum();
         int warnings = suites.stream().mapToInt(s -> number(s.get("warnings"))).sum();
 
         Map<String, Object> overall = new LinkedHashMap<>();
         overall.put("totalTests", total);
         overall.put("passed", passed);
         overall.put("failed", failed);
+        overall.put("assumptionFailures", assumptionFailures);
+        overall.put("ignored", ignored);
         overall.put("warnings", warnings);
         overall.put("blocked", incomplete.size());
         overall.put("fingerprintMismatch", fingerprintMismatch);
@@ -219,6 +223,9 @@ public class DashboardController {
 
         int passed = intAttr(summary, "pass", 0);
         int failed = intAttr(summary, "failed", 0);
+        int assumptionFailures = intAttr(summary, "assumption_failure",
+                intAttr(summary, "assumption_failures", 0));
+        int ignored = intAttr(summary, "ignored", 0);
         int warnings = intAttr(summary, "warning",
                 intAttr(summary, "warnings", 0));
 
@@ -258,6 +265,8 @@ public class DashboardController {
 
             int modulePassed = intAttr(module, "pass", -1);
             int moduleFailed = 0;
+            int moduleAssumptionFailures = 0;
+            int moduleIgnored = 0;
             int moduleTests = 0;
 
             NodeList caseNodes = module.getElementsByTagName("TestCase");
@@ -276,6 +285,11 @@ public class DashboardController {
                     } else if ("fail".equalsIgnoreCase(resultValue)) {
                         moduleFailed++;
                         moduleFailTotal++;
+                    } else if ("assumption_failure".equalsIgnoreCase(resultValue)
+                            || "assumption-failure".equalsIgnoreCase(resultValue)) {
+                        moduleAssumptionFailures++;
+                    } else if ("ignored".equalsIgnoreCase(resultValue)) {
+                        moduleIgnored++;
 
                         Element failure = directChild(test, "Failure");
                         String message = failure == null ? "" : firstNonBlank(
@@ -314,6 +328,8 @@ public class DashboardController {
             moduleMap.put("abi", firstNonBlank(abi, ""));
             moduleMap.put("passed", modulePassed);
             moduleMap.put("failed", moduleFailed);
+            moduleMap.put("assumptionFailures", moduleAssumptionFailures);
+            moduleMap.put("ignored", moduleIgnored);
             moduleMap.put("totalTests", moduleTests);
             moduleMap.put("done", done);
             modules.add(moduleMap);
@@ -334,7 +350,7 @@ public class DashboardController {
             failed = moduleFailTotal;
         }
 
-        int testCases = passed + failed + warnings;
+        int testCases = passed + failed + assumptionFailures + ignored;
         String status = modulesDone >= modulesTotal && modulesTotal > 0 ? "COMPLETED" : "INCOMPLETE";
 
         ReportData data = new ReportData();
@@ -347,6 +363,8 @@ public class DashboardController {
         data.end = end;
         data.passed = passed;
         data.failed = failed;
+        data.assumptionFailures = assumptionFailures;
+        data.ignored = ignored;
         data.warnings = warnings;
         data.modulesDone = modulesDone;
         data.modulesTotal = modulesTotal;
@@ -385,6 +403,8 @@ public class DashboardController {
         String plan = null, version = null, buildNumber = null, hostInfo = null;
         String start = null, end = null, fingerprint = null, patch = null;
         String release = null, sdk = null, abis = null;
+        int assumptionFailureCount = 0;
+        int ignoredCount = 0;
         int warningCount = 0;
 
         for (ParsedReport report : reports) {
@@ -405,6 +425,8 @@ public class DashboardController {
             release = firstNonBlank(release, report.release);
             sdk = firstNonBlank(sdk, report.sdk);
             abis = firstNonBlank(abis, report.abis);
+            assumptionFailureCount += report.assumptionFailures;
+            ignoredCount += report.ignored;
             warningCount += report.warnings;
 
             for (Map<String, Object> module : report.moduleDetails) {
@@ -445,6 +467,8 @@ public class DashboardController {
         int modulesDone;
         int passed;
         int failed;
+        int assumptionFailures;
+        int ignored;
         int testCases;
 
         if (!modules.isEmpty()) {
@@ -452,13 +476,17 @@ public class DashboardController {
             modulesDone = done;
             passed = modulePassed;
             failed = moduleFailed;
-            testCases = moduleTests + warningCount;
+            assumptionFailures = modules.values().stream().mapToInt(m -> intValue(m.get("assumptionFailures"))).sum();
+            ignored = modules.values().stream().mapToInt(m -> intValue(m.get("ignored"))).sum();
+            testCases = moduleTests;
         } else {
             modulesTotal = reports.stream().mapToInt(r -> r.modules).sum();
             modulesDone = reports.stream().mapToInt(r -> r.completedModules).sum();
             passed = reports.stream().mapToInt(r -> r.passed).sum();
             failed = reports.stream().mapToInt(r -> r.failed).sum();
-            testCases = passed + failed + warningCount;
+            assumptionFailures = assumptionFailureCount;
+            ignored = ignoredCount;
+            testCases = passed + failed + assumptionFailures + ignored;
         }
 
         String mergedFingerprint = firstNonBlank(fingerprint, "Not detected");
@@ -468,7 +496,7 @@ public class DashboardController {
 
         ParsedReport merged = new ParsedReport(
                 suite, modulesTotal, modulesDone, testCases,
-                passed, failed, warningCount, status,
+                passed, failed, assumptionFailures, ignored, warningCount, status,
                 mergedFingerprint, mergedPatch
         );
 
@@ -644,6 +672,8 @@ public class DashboardController {
         String end;
         int passed;
         int failed;
+        int assumptionFailures;
+        int ignored;
         int warnings;
         int modulesDone;
         int modulesTotal;
@@ -665,7 +695,7 @@ public class DashboardController {
         ParsedReport toParsedReport() {
             ParsedReport parsed = new ParsedReport(
                     suite, modulesTotal, modulesDone, testCases,
-                    passed, failed, warnings, status, fingerprint, patch
+                    passed, failed, assumptionFailures, ignored, warnings, status, fingerprint, patch
             );
             parsed.plan = plan;
             parsed.version = version;
@@ -690,6 +720,8 @@ public class DashboardController {
         final int testCases;
         final int passed;
         final int failed;
+        final int assumptionFailures;
+        final int ignored;
         final int warnings;
         final String status;
         final String fingerprint;
@@ -710,14 +742,16 @@ public class DashboardController {
         final List<Map<String, Object>> failures = new ArrayList<>();
 
         ParsedReport(String suite, int modules, int completedModules, int testCases,
-                     int passed, int failed, int warnings, String status,
-                     String fingerprint, String patch) {
+                     int passed, int failed, int assumptionFailures, int ignored, int warnings,
+                     String status, String fingerprint, String patch) {
             this.suite = suite;
             this.modules = modules;
             this.completedModules = completedModules;
             this.testCases = testCases;
             this.passed = passed;
             this.failed = failed;
+            this.assumptionFailures = assumptionFailures;
+            this.ignored = ignored;
             this.warnings = warnings;
             this.status = status;
             this.fingerprint = fingerprint;
@@ -735,6 +769,8 @@ public class DashboardController {
             map.put("end", end);
             map.put("passed", passed);
             map.put("failed", failed);
+            map.put("assumptionFailures", assumptionFailures);
+            map.put("ignored", ignored);
             map.put("warnings", warnings);
             map.put("modules", modules);
             map.put("completedModules", completedModules);
@@ -750,7 +786,7 @@ public class DashboardController {
         }
 
         static ParsedReport unknown() {
-            return new ParsedReport(null, 0, 0, 0, 0, 0, 0,
+            return new ParsedReport(null, 0, 0, 0, 0, 0, 0, 0, 0,
                     "UNSUPPORTED", "Not detected", "Not detected");
         }
     }
