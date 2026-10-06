@@ -19,7 +19,7 @@ import java.util.zip.ZipInputStream;
 @RestController
 @RequestMapping("/api")
 public class DashboardController {
-    private static final List<String> SUPPORTED = List.of("CTS", "GTS", "TVTS", "STS", "VTS", "CTS-on-GSI");
+    private static final List<String> SUPPORTED = List.of("CTS", "GTS", "TVTS", "STS", "VTS", "CTS-on-GSI", "CTS-Verifier");
 
     @PostMapping(value = "/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> analyze(@RequestParam("files") MultipartFile[] files) {
@@ -185,6 +185,10 @@ public class DashboardController {
         String suite;
         if ("CTS-on-GSI".equals(filenameSuite)) {
             suite = "CTS-on-GSI";
+        } else if ("CTS-Verifier".equals(filenameSuite)
+                || "CTS_VERIFIER".equalsIgnoreCase(xmlSuite)
+                || "CTS-VERIFIER".equalsIgnoreCase(xmlSuite)) {
+            suite = "CTS-Verifier";
         } else {
             suite = firstNonBlank(filenameSuite, xmlSuite);
         }
@@ -541,6 +545,13 @@ public class DashboardController {
 
         if (normalized.contains("cts-on-gsi") || normalized.contains("ctsongsi")) {
             return "CTS-on-GSI";
+        }
+
+        // CTS Verifier reports use CTS_VERIFIER in the XML/filename.
+        if (normalized.contains("cts-verifier")
+                || normalized.contains("ctsverifier")
+                || normalized.contains("cts_verifier")) {
+            return "CTS-Verifier";
         }
 
         for (String suite : SUPPORTED) {
