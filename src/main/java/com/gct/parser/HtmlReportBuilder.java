@@ -76,16 +76,8 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
         h.append("</section>");
 
         if (fingerprintMismatch) {
-            h.append("<section class='section'><div class='title'>Build fingerprint by test suite</div>");
-            h.append("<div class='issue'><span>Reports from different build fingerprints were kept separate and were not merged.</span></div>");
-            for (Map<String, Object> suite : suites) {
-                h.append("<div class='issue'><strong>")
-                        .append(e(text(suite.get("name"))))
-                        .append("</strong><span>")
-                        .append(e(text(suite.get("fingerprint"))))
-                        .append("</span></div>");
-            }
-            h.append("</section>");
+            h.append("<div class='footer'>Build mismatch detected. Test-case and module metrics were not included because the uploaded reports belong to different builds.</div></div></body></html>");
+            return h.toString();
         }
 
         h.append("<section class='section'><div class='title'>Suite summary</div><div class='table-wrap'><table>")
