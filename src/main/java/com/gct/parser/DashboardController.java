@@ -4,10 +4,10 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.w3c.dom.*;
-
 import javax.xml.XMLConstants;
-import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.stream.XMLInputFactory;
+import javax.xml.stream.XMLStreamConstants;
+import javax.xml.stream.XMLStreamReader;
 import java.io.InputStream;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
@@ -241,65 +241,51 @@ public class DashboardController {
         }
     }
 
+    /**
+     * Parse a Tradefed result using StAX instead of DOM.
+     *
+     * Tradefed test_result.xml files can contain hundreds of thousands of
+     * Test elements. DOM builds an in-memory object for the entire XML tree,
+     * which can exhaust the JVM heap even when the ZIP itself is manageable.
+     * StAX reads the XML as a forward-only stream and keeps only the small
+     * amount of state needed for the dashboard.
+     */
     private ReportData parseTradefedResult(InputStream input) throws Exception {
-        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        XMLInputFactory factory = XMLInputFactory.newFactory();
 
-        // Result files can contain a DOCTYPE. Do not allow external entities or external DTDs.
-        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        factory.setFeature("http://xml.org/sax/features/external-general-entities", false);
-        factory.setFeature("http://xml.org/sax/features/external-parameter-entities", false);
-        factory.setFeature("http://apache.org/xml/features/nonvalidating/load-external-dtd", false);
-        factory.setXIncludeAware(false);
-        factory.setExpandEntityReferences(false);
+        // Secure StAX configuration: result XML is untrusted uploaded input.
+        factory.setProperty(XMLInputFactory.SUPPORT_DTD, Boolean.FALSE);
+        factory.setProperty(XMLInputFactory.IS_SUPPORTING_EXTERNAL_ENTITIES, Boolean.FALSE);
+        factory.setProperty(XMLInputFactory.IS_REPLACING_ENTITY_REFERENCES, Boolean.FALSE);
+        factory.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        factory.setXMLResolver((publicID, systemID, baseURI, namespace) -> null);
 
-        Document document = factory.newDocumentBuilder().parse(input);
-        Element result = document.getDocumentElement();
+        XMLStreamReader reader = factory.createXMLStreamReader(input);
 
-        if (!"Result".equals(result.getTagName())) {
-            NodeList results = document.getElementsByTagName("Result");
-            if (results.getLength() == 0) {
-                return null;
-            }
-            result = (Element) results.item(0);
-        }
+        String xmlSuite = null;
+        String suitePlan = null;
+        String suiteVersion = null;
+        String suiteBuild = null;
+        String hostName = null;
+        String osName = null;
+        String osVersion = null;
+        String start = null;
+        String end = null;
 
-        String xmlSuite = attr(result, "suite_name");
-        String suitePlan = attr(result, "suite_plan");
-        String suite = normalizeSuiteName(xmlSuite, suitePlan);
-        String normalizedSuitePlan = normalizeSuitePlan(suitePlan, xmlSuite);
+        String fingerprint = null;
+        String securityPatch = null;
+        String release = null;
+        String sdk = null;
+        String abis = null;
 
-        if (suite == null) {
-            return null;
-        }
-
-        Element summary = directChild(result, "Summary");
-        Element build = directChild(result, "Build");
-
-        int passed = intAttr(summary, "pass", 0);
-        int failed = intAttr(summary, "failed", 0);
-        int assumptionFailures = intAttr(summary, "assumption_failure",
-                intAttr(summary, "assumption_failures", 0));
-        int ignored = intAttr(summary, "ignored", 0);
-        int warnings = intAttr(summary, "warning",
-                intAttr(summary, "warnings", 0));
-
-        int modulesDone = intAttr(summary, "modules_done", 0);
-        int modulesTotal = intAttr(summary, "modules_total", 0);
-
-        String suiteVersion = attr(result, "suite_version");
-        String suiteBuild = attr(result, "suite_build_number");
-        String hostName = attr(result, "host_name");
-        String osName = attr(result, "os_name");
-        String osVersion = attr(result, "os_version");
-        String start = firstNonBlank(attr(result, "start_display"), attr(result, "start"));
-        String end = firstNonBlank(attr(result, "end_display"), attr(result, "end"));
-
-        String fingerprint = attr(build, "build_fingerprint");
-        String securityPatch = attr(build, "build_version_security_patch");
-        String release = attr(build, "build_version_release");
-        String sdk = attr(build, "build_version_sdk");
-        String abis = attr(build, "build_abis");
+        int passed = 0;
+        int failed = 0;
+        int assumptionFailures = 0;
+        int ignored = 0;
+        int warnings = 0;
+        int modulesDone = 0;
+        int modulesTotal = 0;
 
         List<Map<String, Object>> modules = new ArrayList<>();
         List<Map<String, Object>> failures = new ArrayList<>();
@@ -307,108 +293,246 @@ public class DashboardController {
         List<TestResultData> testResults = new ArrayList<>();
         Map<String, Boolean> moduleDoneStates = new LinkedHashMap<>();
 
-        NodeList moduleNodes = result.getElementsByTagName("Module");
         int modulePassTotal = 0;
         int moduleFailTotal = 0;
         int moduleAssumptionTotal = 0;
         int moduleIgnoredTotal = 0;
 
-        for (int i = 0; i < moduleNodes.getLength(); i++) {
-            Element module = (Element) moduleNodes.item(i);
-            String moduleName = firstNonBlank(attr(module, "name"), "Unknown Module");
-            String abi = attr(module, "abi");
-            String displayName = abi == null || abi.isBlank()
-                    ? moduleName
-                    : abi + " " + moduleName;
+        boolean inResult = false;
+        boolean inSummary = false;
+        boolean inBuild = false;
+        boolean inFailure = false;
+        boolean inStackTrace = false;
 
-            int modulePassed = intAttr(module, "pass", -1);
-            int moduleFailed = 0;
-            int moduleAssumptionFailures = 0;
-            int moduleIgnored = 0;
-            int moduleTests = 0;
+        String currentModuleName = null;
+        String currentModuleAbi = "";
+        String currentModuleDisplayName = null;
+        int currentModulePassed = -1;
+        int currentModuleFailed = 0;
+        int currentModuleAssumptionFailures = 0;
+        int currentModuleIgnored = 0;
+        int currentModuleTests = 0;
+        boolean currentModuleDone = false;
 
-            NodeList caseNodes = module.getElementsByTagName("TestCase");
-            for (int c = 0; c < caseNodes.getLength(); c++) {
-                Element testCase = (Element) caseNodes.item(c);
-                String className = attr(testCase, "name");
+        String currentTestCaseName = "";
+        TestResultData currentTest = null;
+        String currentFailureMessage = "";
+        StringBuilder currentStackTrace = new StringBuilder();
 
-                NodeList testNodes = testCase.getElementsByTagName("Test");
-                for (int t = 0; t < testNodes.getLength(); t++) {
-                    Element test = (Element) testNodes.item(t);
-                    String resultValue = attr(test, "result");
-                    String testName = firstNonBlank(attr(test, "name"), "Unknown Test");
-                    String testKey = (firstNonBlank(abi, "") + "|" + moduleName + "|" +
-                            firstNonBlank(className, "") + "|" + testName).toLowerCase(Locale.ROOT);
-                    String failureMessage = "";
-                    moduleTests++;
+        try {
+            while (reader.hasNext()) {
+                int event = reader.next();
 
-                    testResults.add(new TestResultData(testKey, suite, moduleName,
-                            firstNonBlank(abi, ""), firstNonBlank(className, ""), testName,
-                            resultValue, failureMessage));
+                if (event == XMLStreamConstants.START_ELEMENT) {
+                    String name = reader.getLocalName();
 
-                    if ("pass".equalsIgnoreCase(resultValue)) {
-                        modulePassTotal++;
-                    } else if ("fail".equalsIgnoreCase(resultValue)) {
-                        moduleFailed++;
-                        moduleFailTotal++;
+                    if ("Result".equals(name) && !inResult) {
+                        inResult = true;
+                        xmlSuite = streamAttr(reader, "suite_name");
+                        suitePlan = streamAttr(reader, "suite_plan");
+                        suiteVersion = streamAttr(reader, "suite_version");
+                        suiteBuild = streamAttr(reader, "suite_build_number");
+                        hostName = streamAttr(reader, "host_name");
+                        osName = streamAttr(reader, "os_name");
+                        osVersion = streamAttr(reader, "os_version");
+                        start = firstNonBlank(streamAttr(reader, "start_display"), streamAttr(reader, "start"));
+                        end = firstNonBlank(streamAttr(reader, "end_display"), streamAttr(reader, "end"));
+                        continue;
+                    }
 
-                        Element failure = directChild(test, "Failure");
-                        String message = failure == null ? "" : firstNonBlank(
-                                attr(failure, "message"),
-                                textOfDirectChild(failure, "StackTrace")
+                    if (!inResult) {
+                        continue;
+                    }
+
+                    if ("Summary".equals(name)) {
+                        inSummary = true;
+                        passed = intStreamAttr(reader, "pass", passed);
+                        failed = intStreamAttr(reader, "failed", failed);
+                        assumptionFailures = intStreamAttr(reader, "assumption_failure",
+                                intStreamAttr(reader, "assumption_failures", assumptionFailures));
+                        ignored = intStreamAttr(reader, "ignored", ignored);
+                        warnings = intStreamAttr(reader, "warning",
+                                intStreamAttr(reader, "warnings", warnings));
+                        modulesDone = intStreamAttr(reader, "modules_done", modulesDone);
+                        modulesTotal = intStreamAttr(reader, "modules_total", modulesTotal);
+                        continue;
+                    }
+
+                    if ("Build".equals(name)) {
+                        inBuild = true;
+                        fingerprint = streamAttr(reader, "build_fingerprint");
+                        securityPatch = streamAttr(reader, "build_version_security_patch");
+                        release = streamAttr(reader, "build_version_release");
+                        sdk = streamAttr(reader, "build_version_sdk");
+                        abis = streamAttr(reader, "build_abis");
+                        continue;
+                    }
+
+                    if ("Module".equals(name)) {
+                        currentModuleName = firstNonBlank(streamAttr(reader, "name"), "Unknown Module");
+                        currentModuleAbi = firstNonBlank(streamAttr(reader, "abi"), "");
+                        currentModuleDisplayName = currentModuleAbi.isBlank()
+                                ? currentModuleName
+                                : currentModuleAbi + " " + currentModuleName;
+                        currentModulePassed = intStreamAttr(reader, "pass", -1);
+                        currentModuleFailed = 0;
+                        currentModuleAssumptionFailures = 0;
+                        currentModuleIgnored = 0;
+                        currentModuleTests = 0;
+                        currentModuleDone = Boolean.parseBoolean(
+                                firstNonBlank(streamAttr(reader, "done"), "false"));
+                        continue;
+                    }
+
+                    if ("TestCase".equals(name) && currentModuleName != null) {
+                        currentTestCaseName = firstNonBlank(streamAttr(reader, "name"), "");
+                        continue;
+                    }
+
+                    if ("Test".equals(name) && currentModuleName != null) {
+                        String resultValue = firstNonBlank(streamAttr(reader, "result"), "");
+                        String testName = firstNonBlank(streamAttr(reader, "name"), "Unknown Test");
+                        String testKey = (currentModuleAbi + "|" + currentModuleName + "|" +
+                                currentTestCaseName + "|" + testName).toLowerCase(Locale.ROOT);
+
+                        currentTest = new TestResultData(
+                                testKey, normalizeSuiteName(xmlSuite, suitePlan),
+                                currentModuleName, currentModuleAbi, currentTestCaseName,
+                                testName, resultValue, ""
                         );
-                        testResults.get(testResults.size() - 1).details = firstNonBlank(message, "Test failed");
+                        currentFailureMessage = "";
+                        currentStackTrace.setLength(0);
+                        currentModuleTests++;
+                        continue;
+                    }
 
-                        failures.add(Map.of(
-                                "suite", suite,
-                                "module", displayName,
-                                "testCase", firstNonBlank(className, "") + "#"
-                                        + firstNonBlank(attr(test, "name"), "Unknown Test"),
-                                "details", firstNonBlank(message, "Test failed")
-                        ));
-                    } else if ("assumption_failure".equalsIgnoreCase(resultValue)
-                            || "assumption-failure".equalsIgnoreCase(resultValue)) {
-                        moduleAssumptionFailures++;
-                        moduleAssumptionTotal++;
-                    } else if ("ignored".equalsIgnoreCase(resultValue)) {
-                        moduleIgnored++;
-                        moduleIgnoredTotal++;
+                    if ("Failure".equals(name) && currentTest != null) {
+                        inFailure = true;
+                        currentFailureMessage = firstNonBlank(streamAttr(reader, "message"), "");
+                        continue;
+                    }
+
+                    if ("StackTrace".equals(name) && inFailure && currentTest != null) {
+                        inStackTrace = true;
+                        currentStackTrace.setLength(0);
+                        continue;
+                    }
+
+                    if ("StackTrace".equals(name) && inFailure && currentTest != null) {
+                        inStackTrace = true;
+                        currentStackTrace.setLength(0);
+                    }
+
+                } else if (event == XMLStreamConstants.CHARACTERS
+                        || event == XMLStreamConstants.CDATA) {
+                    if (inStackTrace) {
+                        currentStackTrace.append(reader.getText());
+                    }
+
+                } else if (event == XMLStreamConstants.END_ELEMENT) {
+                    String name = reader.getLocalName();
+
+                    if ("StackTrace".equals(name) && inStackTrace) {
+                        inStackTrace = false;
+                        String stack = currentStackTrace.toString().trim();
+                        if (currentFailureMessage.isBlank()) {
+                            currentFailureMessage = stack;
+                        }
+                    }
+
+                    if ("Failure".equals(name) && inFailure) {
+                        inFailure = false;
+                        if (currentTest != null && currentFailureMessage.isBlank()) {
+                            currentFailureMessage = currentStackTrace.toString().trim();
+                        }
+                    }
+
+                    if ("Test".equals(name) && currentTest != null) {
+                        currentTest.details = firstNonBlank(currentFailureMessage, "Test failed");
+
+                        if ("pass".equalsIgnoreCase(currentTest.result)) {
+                            modulePassTotal++;
+                        } else if ("fail".equalsIgnoreCase(currentTest.result)) {
+                            currentModuleFailed++;
+                            moduleFailTotal++;
+
+                            failures.add(Map.of(
+                                    "suite", currentTest.suite,
+                                    "module", currentModuleDisplayName,
+                                    "testCase", currentTest.testCase + "#" + currentTest.name,
+                                    "details", firstNonBlank(currentFailureMessage, "Test failed")
+                            ));
+                        } else if ("assumption_failure".equalsIgnoreCase(currentTest.result)
+                                || "assumption-failure".equalsIgnoreCase(currentTest.result)) {
+                            currentModuleAssumptionFailures++;
+                            moduleAssumptionTotal++;
+                        } else if ("ignored".equalsIgnoreCase(currentTest.result)) {
+                            currentModuleIgnored++;
+                            moduleIgnoredTotal++;
+                        }
+
+                        testResults.add(currentTest);
+                        currentTest = null;
+                    }
+
+                    if ("TestCase".equals(name)) {
+                        currentTestCaseName = "";
+                    }
+
+                    if ("Module".equals(name) && currentModuleName != null) {
+                        int modulePassed = currentModulePassed >= 0
+                                ? currentModulePassed
+                                : Math.max(0, currentModuleTests - currentModuleFailed);
+
+                        String moduleKey = (currentModuleAbi + "|" + currentModuleName)
+                                .toLowerCase(Locale.ROOT);
+                        moduleDoneStates.put(moduleKey, currentModuleDone);
+
+                        if (!currentModuleDone) {
+                            incomplete.add(Map.of(
+                                    "suite", normalizeSuiteName(xmlSuite, suitePlan),
+                                    "module", currentModuleDisplayName,
+                                    "reason", "Module is marked done=false in Tradefed result"
+                            ));
+                        }
+
+                        Map<String, Object> moduleMap = new LinkedHashMap<>();
+                        moduleMap.put("name", currentModuleName);
+                        moduleMap.put("abi", currentModuleAbi);
+                        moduleMap.put("passed", modulePassed);
+                        moduleMap.put("failed", currentModuleFailed);
+                        moduleMap.put("assumptionFailures", currentModuleAssumptionFailures);
+                        moduleMap.put("ignored", currentModuleIgnored);
+                        moduleMap.put("totalTests", currentModuleTests);
+                        moduleMap.put("done", currentModuleDone);
+                        modules.add(moduleMap);
+
+                        currentModuleName = null;
+                        currentModuleAbi = "";
+                        currentModuleDisplayName = null;
+                    }
+
+                    if ("Summary".equals(name)) {
+                        inSummary = false;
+                    }
+                    if ("Build".equals(name)) {
+                        inBuild = false;
+                    }
+                    if ("Result".equals(name)) {
+                        inResult = false;
                     }
                 }
             }
-
-            if (modulePassTotal < 0 && modulePassed < 0) {
-                modulePassed = Math.max(0, moduleTests - moduleFailed);
-            } else if (modulePassed < 0) {
-                modulePassed = Math.max(0, moduleTests - moduleFailed);
-            }
-
-            boolean done = Boolean.parseBoolean(attr(module, "done"));
-            String moduleKey = (firstNonBlank(abi, "") + "|" + moduleName).toLowerCase(Locale.ROOT);
-            moduleDoneStates.put(moduleKey, done);
-            if (!done) {
-                incomplete.add(Map.of(
-                        "suite", suite,
-                        "module", displayName,
-                        "reason", "Module is marked done=false in Tradefed result"
-                ));
-            }
-
-            Map<String, Object> moduleMap = new LinkedHashMap<>();
-            moduleMap.put("name", moduleName);
-            moduleMap.put("abi", firstNonBlank(abi, ""));
-            moduleMap.put("passed", modulePassed);
-            moduleMap.put("failed", moduleFailed);
-            moduleMap.put("assumptionFailures", moduleAssumptionFailures);
-            moduleMap.put("ignored", moduleIgnored);
-            moduleMap.put("totalTests", moduleTests);
-            moduleMap.put("done", done);
-            modules.add(moduleMap);
+        } finally {
+            reader.close();
         }
 
-        // Some result versions omit summary module counts. Fall back to actual Module elements.
-        // Likewise derive assumption-failure/ignored counts from individual tests when
-        // those summary attributes are absent or incomplete.
+        String suite = normalizeSuiteName(xmlSuite, suitePlan);
+        String normalizedSuitePlan = normalizeSuitePlan(suitePlan, xmlSuite);
+        if (suite == null) {
+            return null;
+        }
+
         if (assumptionFailures == 0 && moduleAssumptionTotal > 0) {
             assumptionFailures = moduleAssumptionTotal;
         }
@@ -419,18 +543,21 @@ public class DashboardController {
             modulesTotal = modules.size();
         }
         if (modulesDone == 0 && !modules.isEmpty()) {
-            modulesDone = (int) modules.stream().filter(m -> Boolean.TRUE.equals(m.get("done"))).count();
+            modulesDone = (int) modules.stream()
+                    .filter(m -> Boolean.TRUE.equals(m.get("done")))
+                    .count();
         }
 
-        // Summary counts are authoritative. If an older report has no summary pass/fail,
-        // derive them from the module/test records.
+        // Summary counts are authoritative. Older result versions may omit
+        // summary pass/fail, so derive them from individual test results.
         if (passed == 0 && failed == 0 && !modules.isEmpty()) {
             passed = modulePassTotal;
             failed = moduleFailTotal;
         }
 
         int testCases = passed + failed + assumptionFailures + ignored;
-        String status = modulesDone >= modulesTotal && modulesTotal > 0 ? "COMPLETED" : "INCOMPLETE";
+        String status = modulesDone >= modulesTotal && modulesTotal > 0
+                ? "COMPLETED" : "INCOMPLETE";
 
         ReportData data = new ReportData();
         data.suite = suite;
@@ -460,6 +587,23 @@ public class DashboardController {
         data.testResults = testResults;
         data.moduleDoneStates = moduleDoneStates;
         return data;
+    }
+
+    private static String streamAttr(XMLStreamReader reader, String name) {
+        String value = reader.getAttributeValue(null, name);
+        return value == null || value.isBlank() ? null : value;
+    }
+
+    private static int intStreamAttr(XMLStreamReader reader, String name, int fallback) {
+        String value = streamAttr(reader, name);
+        if (value == null) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     /**
