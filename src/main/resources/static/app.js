@@ -68,7 +68,7 @@ function render(){
 $("reportFiles").addEventListener("change",e=>{state.files=[...e.target.files];renderFiles()});
 $("clearBtn").addEventListener("click",()=>{
   state.files=[];state.data=null;$("reportFiles").value="";renderFiles();$("publishBtn").disabled=true;$("viewBtn").disabled=true;
-  $("statusMessage").textContent="";$("stats").innerHTML="";$("suiteGrid").innerHTML="";$("suiteDetails").innerHTML="";
+  $("statusMessage").textContent="";$("stats").innerHTML="";$("suiteGrid").innerHTML="";
   $("incompleteList").innerHTML="";$("failureList").innerHTML="";
   $("buildMismatch").innerHTML="";
   $("buildFingerprint").textContent="Not detected";
