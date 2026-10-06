@@ -10,6 +10,7 @@ public final class HtmlReportBuilder {
         List<Map<String, Object>> suites = maps(dashboard.get("suites"));
         List<Map<String, Object>> failures = maps(dashboard.get("failures"));
         List<Map<String, Object>> incomplete = maps(dashboard.get("incompleteModules"));
+        List<Map<String, Object>> builds = maps(dashboard.get("builds"));
         Map<String, Object> overall = map(dashboard.get("overall"));
 
         int total = number(overall.get("totalTests"));
@@ -53,13 +54,23 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
                 .append("<div class='status ").append(overallPass ? "pass" : "fail").append("'>")
                 .append(fingerprintMismatch ? "BUILD MISMATCH" : (overallPass ? "PASS" : "ATTENTION REQUIRED")).append("</div></div>");
 
-        h.append("<section class='section'><div class='title'>Build Information</div><div class='summary'>")
-                .append(field("Build fingerprint", fingerprint))
-                .append(field("Security patch", patch))
-                .append(field("Android version", androidVersion))
-                .append("</div>");
-        if (fingerprintMismatch) {
-            h.append("<div class='issue'><strong>Build mismatch detected</strong><span>Reports from different build fingerprints were uploaded. They were kept separate and were not merged.</span></div>");
+        h.append("<section class='section'><div class='title'>Build Information</div>");
+        if (fingerprintMismatch && !builds.isEmpty()) {
+            h.append("<div class='table-wrap'><table><thead><tr><th>Build</th><th>Fingerprint</th><th>Android Version</th><th>Security Patch</th></tr></thead><tbody>");
+            for (int i = 0; i < builds.size(); i++) {
+                Map<String, Object> build = builds.get(i);
+                h.append("<tr><td><strong>Build ").append((char) ('A' + i)).append("</strong></td>")
+                        .append("<td>").append(e(text(build.get("fingerprint")))).append("</td>")
+                        .append("<td>").append(e(text(build.get("androidVersion")))).append("</td>")
+                        .append("<td>").append(e(text(build.get("securityPatch")))).append("</td></tr>");
+            }
+            h.append("</tbody></table></div>");
+        } else {
+            h.append("<div class='summary'>")
+                    .append(field("Build fingerprint", fingerprint))
+                    .append(field("Security patch", patch))
+                    .append(field("Android version", androidVersion))
+                    .append("</div>");
         }
         h.append("</section>");
 
