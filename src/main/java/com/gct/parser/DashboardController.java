@@ -111,6 +111,7 @@ public class DashboardController {
                 item.put("fingerprint", fp);
                 item.put("securityPatch", "Not detected");
                 item.put("androidVersion", "Not detected");
+                item.put("suites", new LinkedHashSet<String>());
                 return item;
             });
 
@@ -122,6 +123,16 @@ public class DashboardController {
             if (!suiteRelease.isBlank() && !"Not detected".equalsIgnoreCase(suiteRelease)) {
                 build.put("androidVersion", suiteRelease);
             }
+
+            @SuppressWarnings("unchecked")
+            Set<String> buildSuites = (Set<String>) build.get("suites");
+            buildSuites.add(textValue(suite.get("name")));
+        }
+
+        for (Map<String, Object> build : buildMap.values()) {
+            @SuppressWarnings("unchecked")
+            Set<String> buildSuites = (Set<String>) build.get("suites");
+            build.put("suites", new ArrayList<>(buildSuites));
         }
 
         List<Map<String, Object>> builds = new ArrayList<>(buildMap.values());
