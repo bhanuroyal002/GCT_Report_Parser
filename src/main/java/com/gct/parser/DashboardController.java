@@ -223,7 +223,7 @@ public class DashboardController {
                     }
 
                     try (InputStream xmlInput = new ByteArrayInputStream(entryBytes)) {
-                        ReportData candidate = parseTradefedResult(xmlInput, filenameSuite);
+                        ReportData candidate = parseTradefedResult(xmlInput);
                         if (candidate != null) {
                             candidates.add(candidate);
                         }
@@ -286,7 +286,6 @@ public class DashboardController {
         int modulesDone = intAttr(summary, "modules_done", 0);
         int modulesTotal = intAttr(summary, "modules_total", 0);
 
-        String suitePlan = attr(result, "suite_plan");
         String suiteVersion = attr(result, "suite_version");
         String suiteBuild = attr(result, "suite_build_number");
         String hostName = attr(result, "host_name");
