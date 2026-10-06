@@ -85,6 +85,72 @@ class DashboardControllerTest {
         assertThat(gts.get("status")).isEqualTo("COMPLETED");
     }
 
+    @Test
+    void aTestThatPassesInAnyReportIsCountedAsPassed() {
+        String failedXml = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Result suite_name="TVTS" suite_plan="tvts"
+                        start_display="Wed Oct 07 10:00:00 IST 2026">
+                  <Summary pass="0" failed="1" modules_done="1" modules_total="1"/>
+                  <Build build_fingerprint="test/device:16/BUILD/123:user/release-keys"/>
+                  <Module name="ExampleModule" abi="armeabi-v7a" done="true" pass="0">
+                    <TestCase name="ExampleTest">
+                      <Test name="testRerun" result="fail">
+                        <Failure message="First execution failed"/>
+                      </Test>
+                    </TestCase>
+                  </Module>
+                </Result>
+                """;
+
+        String passedXml = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Result suite_name="TVTS" suite_plan="tvts"
+                        start_display="Wed Oct 07 10:01:00 IST 2026">
+                  <Summary pass="1" failed="0" modules_done="1" modules_total="1"/>
+                  <Build build_fingerprint="test/device:16/BUILD/123:user/release-keys"/>
+                  <Module name="ExampleModule" abi="armeabi-v7a" done="true" pass="1">
+                    <TestCase name="ExampleTest">
+                      <Test name="testRerun" result="pass"/>
+                    </TestCase>
+                  </Module>
+                </Result>
+                """;
+
+        MockMultipartFile zip = new MockMultipartFile(
+                "files", "TVTS.zip", "application/zip", createZipWithTwoResults(failedXml, passedXml)
+        );
+
+        Map<String, Object> body = controller.analyze(new MockMultipartFile[]{zip}).getBody();
+        assertThat(body).isNotNull();
+
+        List<Map<String, Object>> suites = (List<Map<String, Object>>) body.get("suites");
+        assertThat(suites).hasSize(1);
+        Map<String, Object> tvts = suites.get(0);
+
+        assertThat(tvts.get("passed")).isEqualTo(1);
+        assertThat(tvts.get("failed")).isEqualTo(0);
+        assertThat(tvts.get("testCases")).isEqualTo(1);
+    }
+
+    private static byte[] createZipWithTwoResults(String firstXml, String secondXml) {
+        try (var output = new java.io.ByteArrayOutputStream();
+             var zip = new java.util.zip.ZipOutputStream(output)) {
+            zip.putNextEntry(new java.util.zip.ZipEntry("results/first/test_result.xml"));
+            zip.write(firstXml.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+
+            zip.putNextEntry(new java.util.zip.ZipEntry("results/second/test_result.xml"));
+            zip.write(secondXml.getBytes(StandardCharsets.UTF_8));
+            zip.closeEntry();
+
+            zip.finish();
+            return output.toByteArray();
+        } catch (java.io.IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     private static byte[] createZip(String xml) {
         try (var output = new java.io.ByteArrayOutputStream();
              var zip = new java.util.zip.ZipOutputStream(output)) {
