@@ -879,34 +879,6 @@ public class DashboardController {
                 : normalizedSuite.toUpperCase(Locale.ROOT);
     }
 
-    private static Element directChild(Element parent, String tagName) {
-        if (parent == null) {
-            return null;
-        }
-
-        NodeList children = parent.getChildNodes();
-        for (int i = 0; i < children.getLength(); i++) {
-            Node node = children.item(i);
-            if (node instanceof Element element && tagName.equals(element.getTagName())) {
-                return element;
-            }
-        }
-        return null;
-    }
-
-    private static String textOfDirectChild(Element parent, String tagName) {
-        Element child = directChild(parent, tagName);
-        return child == null ? null : child.getTextContent();
-    }
-
-    private static String attr(Element element, String name) {
-        if (element == null || !element.hasAttribute(name)) {
-            return null;
-        }
-        String value = element.getAttribute(name);
-        return value == null || value.isBlank() ? null : value;
-    }
-
     private static String firstNonBlank(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) {
@@ -914,18 +886,6 @@ public class DashboardController {
             }
         }
         return null;
-    }
-
-    private static int intAttr(Element element, String name, int fallback) {
-        String value = attr(element, name);
-        if (value == null) {
-            return fallback;
-        }
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException ignored) {
-            return fallback;
-        }
     }
 
     private static int number(Object value) {
