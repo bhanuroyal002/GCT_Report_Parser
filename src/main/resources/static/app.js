@@ -70,6 +70,12 @@ $("clearBtn").addEventListener("click",()=>{
   state.files=[];state.data=null;$("reportFiles").value="";renderFiles();$("publishBtn").disabled=true;$("viewBtn").disabled=true;
   $("statusMessage").textContent="";$("stats").innerHTML="";$("suiteGrid").innerHTML="";$("suiteDetails").innerHTML="";
   $("incompleteList").innerHTML="";$("failureList").innerHTML="";
+  $("buildMismatch").innerHTML="";
+  $("buildFingerprint").textContent="Not detected";
+  $("androidVersion").textContent="Not detected";
+  $("securityPatch").textContent="Not detected";
+  const issuesEl=document.querySelector(".issues-grid");
+  if(issuesEl) issuesEl.style.display="grid";
   $("readiness").textContent="WAITING FOR REPORTS";$("readiness").className="readiness-chip";
 });
 $("analyzeBtn").addEventListener("click",async()=>{
