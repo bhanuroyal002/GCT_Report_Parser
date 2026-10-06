@@ -176,47 +176,70 @@ public class DashboardController {
     private ParsedReport parse(MultipartFile file) {
         String filenameSuite = detectSuite(file.getOriginalFilename());
         List<ReportData> candidates = new ArrayList<>();
+        Set<String> seenXml = new HashSet<>();
 
-        try (ZipInputStream zis = new ZipInputStream(file.getInputStream())) {
-            ZipEntry entry;
-
-            while ((entry = zis.getNextEntry()) != null) {
-                if (entry.isDirectory()) {
-                    continue;
-                }
-
-                String name = entry.getName().toLowerCase(Locale.ROOT);
-                if (!name.endsWith("test_result.xml")) {
-                    continue;
-                }
-
-                // Read the complete XML entry before parsing it. This prevents
-                // one XML parse failure from aborting the remaining split reports.
-                byte[] xmlBytes = zis.readAllBytes();
-
-                try (InputStream xmlInput = new ByteArrayInputStream(xmlBytes)) {
-                    ReportData candidate = parseTradefedResult(xmlInput, filenameSuite);
-                    if (candidate != null) {
-                        candidates.add(candidate);
-                    }
-                } catch (Exception ignoredEntry) {
-                    // Ignore only this result entry and continue scanning the ZIP.
-                }
-            }
-        } catch (Exception ignoredZip) {
-            // A malformed/unsupported ZIP is simply ignored; parsed entries are retained.
+        try {
+            collectReportsFromZip(file.getBytes(), filenameSuite, candidates, seenXml, 0);
+        } catch (Exception ignored) {
+            // Keep any reports already collected from valid ZIP entries.
         }
 
         if (candidates.isEmpty()) {
             return ParsedReport.unknown();
         }
 
-        // A ZIP may contain several Tradefed split results. Merge all of them.
         List<ParsedReport> parsedReports = new ArrayList<>();
         for (ReportData candidate : candidates) {
             parsedReports.add(candidate.toParsedReport());
         }
         return mergeReports(parsedReports);
+    }
+
+    /**
+     * Recursively scans ZIP files because Tradefed result archives can contain
+     * additional result ZIPs inside the top-level suite ZIP.
+     */
+    private void collectReportsFromZip(byte[] zipBytes, String filenameSuite,
+                                       List<ReportData> candidates, Set<String> seenXml,
+                                       int depth) throws Exception {
+        if (depth > 4) {
+            return;
+        }
+
+        try (ZipInputStream zis = new ZipInputStream(new ByteArrayInputStream(zipBytes))) {
+            ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    continue;
+                }
+
+                String name = entry.getName().toLowerCase(Locale.ROOT);
+                byte[] entryBytes = zis.readAllBytes();
+
+                if (name.endsWith("test_result.xml")) {
+                    String hash = Base64.getEncoder().encodeToString(
+                            java.security.MessageDigest.getInstance("SHA-256").digest(entryBytes));
+                    if (!seenXml.add(hash)) {
+                        continue;
+                    }
+
+                    try (InputStream xmlInput = new ByteArrayInputStream(entryBytes)) {
+                        ReportData candidate = parseTradefedResult(xmlInput, filenameSuite);
+                        if (candidate != null) {
+                            candidates.add(candidate);
+                        }
+                    } catch (Exception ignoredEntry) {
+                        // Ignore only this result entry and continue scanning.
+                    }
+                } else if (name.endsWith(".zip")) {
+                    try {
+                        collectReportsFromZip(entryBytes, filenameSuite, candidates, seenXml, depth + 1);
+                    } catch (Exception ignoredNestedZip) {
+                        // Ignore unrelated/corrupt nested ZIPs.
+                    }
+                }
+            }
+        }
     }
 
     private ReportData parseTradefedResult(InputStream input, String filenameSuite) throws Exception {
@@ -294,6 +317,8 @@ public class DashboardController {
         List<Map<String, Object>> modules = new ArrayList<>();
         List<Map<String, Object>> failures = new ArrayList<>();
         List<Map<String, Object>> incomplete = new ArrayList<>();
+        List<TestResultData> testResults = new ArrayList<>();
+        Map<String, Boolean> moduleDoneStates = new LinkedHashMap<>();
 
         NodeList moduleNodes = result.getElementsByTagName("Module");
         int modulePassTotal = 0;
@@ -324,7 +349,15 @@ public class DashboardController {
                 for (int t = 0; t < testNodes.getLength(); t++) {
                     Element test = (Element) testNodes.item(t);
                     String resultValue = attr(test, "result");
+                    String testName = firstNonBlank(attr(test, "name"), "Unknown Test");
+                    String testKey = (firstNonBlank(abi, "") + "|" + moduleName + "|" +
+                            firstNonBlank(className, "") + "|" + testName).toLowerCase(Locale.ROOT);
+                    String failureMessage = "";
                     moduleTests++;
+
+                    testResults.add(new TestResultData(testKey, suite, moduleName,
+                            firstNonBlank(abi, ""), firstNonBlank(className, ""), testName,
+                            resultValue, failureMessage));
 
                     if ("pass".equalsIgnoreCase(resultValue)) {
                         modulePassTotal++;
@@ -337,6 +370,7 @@ public class DashboardController {
                                 attr(failure, "message"),
                                 textOfDirectChild(failure, "StackTrace")
                         );
+                        testResults.get(testResults.size() - 1).details = firstNonBlank(message, "Test failed");
 
                         failures.add(Map.of(
                                 "suite", suite,
@@ -363,6 +397,8 @@ public class DashboardController {
             }
 
             boolean done = Boolean.parseBoolean(attr(module, "done"));
+            String moduleKey = (firstNonBlank(abi, "") + "|" + moduleName).toLowerCase(Locale.ROOT);
+            moduleDoneStates.put(moduleKey, done);
             if (!done) {
                 incomplete.add(Map.of(
                         "suite", suite,
@@ -434,6 +470,8 @@ public class DashboardController {
         data.moduleDetails = modules;
         data.failures = failures;
         data.incomplete = incomplete;
+        data.testResults = testResults;
+        data.moduleDoneStates = moduleDoneStates;
         return data;
     }
 
@@ -444,6 +482,13 @@ public class DashboardController {
      * in more than one ZIP, keep the richer record instead of counting it twice.
      * This is important when users upload split/partial result archives.
      */
+    /**
+     * Merge reports using test-case identity, not aggregate counters.
+     *
+     * If a test fails in an earlier execution and the same test passes in a
+     * later rerun, the later PASS replaces the earlier FAIL. This prevents
+     * rerun results (for example TVTS YouTubeTS) from being double-counted.
+     */
     private static ParsedReport mergeReports(List<ParsedReport> reports) {
         if (reports == null || reports.isEmpty()) {
             return ParsedReport.unknown();
@@ -452,16 +497,14 @@ public class DashboardController {
             return reports.get(0);
         }
 
-        Map<String, Map<String, Object>> modules = new LinkedHashMap<>();
-        Map<String, Map<String, Object>> uniqueFailures = new LinkedHashMap<>();
-
         String suite = reports.get(0).suite;
         String plan = null, version = null, buildNumber = null, hostInfo = null;
         String start = null, end = null, fingerprint = null, patch = null;
         String release = null, sdk = null, abis = null;
-        int assumptionFailureCount = 0;
-        int ignoredCount = 0;
-        int warningCount = 0;
+
+        Map<String, TestResultData> testResults = new LinkedHashMap<>();
+        Map<String, Boolean> moduleDoneStates = new LinkedHashMap<>();
+        Map<String, Map<String, Object>> moduleInfo = new LinkedHashMap<>();
 
         for (ParsedReport report : reports) {
             plan = firstNonBlank(plan, report.plan);
@@ -470,78 +513,124 @@ public class DashboardController {
             hostInfo = firstNonBlank(hostInfo, report.hostInfo);
             start = firstNonBlank(start, report.start);
             end = firstNonBlank(end, report.end);
-            fingerprint = firstNonBlank(
-                    fingerprint,
-                    "Not detected".equals(report.fingerprint) ? null : report.fingerprint
-            );
-            patch = firstNonBlank(
-                    patch,
-                    "Not detected".equals(report.patch) ? null : report.patch
-            );
+            fingerprint = firstNonBlank(fingerprint,
+                    "Not detected".equals(report.fingerprint) ? null : report.fingerprint);
+            patch = firstNonBlank(patch,
+                    "Not detected".equals(report.patch) ? null : report.patch);
             release = firstNonBlank(release, report.release);
             sdk = firstNonBlank(sdk, report.sdk);
             abis = firstNonBlank(abis, report.abis);
-            assumptionFailureCount += report.assumptionFailures;
-            ignoredCount += report.ignored;
-            warningCount += report.warnings;
+
+            moduleDoneStates.putAll(report.moduleDoneStates);
+
+            for (TestResultData test : report.testResults) {
+                // Later report wins. This is the rerun reconciliation rule.
+                testResults.put(test.key, test);
+            }
 
             for (Map<String, Object> module : report.moduleDetails) {
                 String key = (textValue(module.get("abi")) + "|" + textValue(module.get("name")))
                         .toLowerCase(Locale.ROOT);
-                Map<String, Object> existing = modules.get(key);
-
+                Map<String, Object> existing = moduleInfo.get(key);
                 if (existing == null || isRicherModule(module, existing)) {
-                    modules.put(key, new LinkedHashMap<>(module));
+                    moduleInfo.put(key, new LinkedHashMap<>(module));
                 }
             }
+        }
 
-            for (Map<String, Object> failure : report.failures) {
-                String key = String.join("|",
-                        textValue(failure.get("suite")),
-                        textValue(failure.get("module")),
-                        textValue(failure.get("testCase"))
-                );
-                uniqueFailures.putIfAbsent(key, failure);
+        // Rebuild all test-result counters from the deduplicated final test state.
+        int passed = 0, failed = 0, assumptionFailures = 0, ignored = 0;
+        Map<String, Integer> modulePassed = new HashMap<>();
+        Map<String, Integer> moduleFailed = new HashMap<>();
+        Map<String, Integer> moduleAssumption = new HashMap<>();
+        Map<String, Integer> moduleIgnored = new HashMap<>();
+        Map<String, Integer> moduleTotal = new HashMap<>();
+
+        List<Map<String, Object>> failures = new ArrayList<>();
+
+        for (TestResultData test : testResults.values()) {
+            String moduleKey = (test.abi + "|" + test.module).toLowerCase(Locale.ROOT);
+            moduleTotal.merge(moduleKey, 1, Integer::sum);
+
+            if ("pass".equalsIgnoreCase(test.result)) {
+                passed++;
+                modulePassed.merge(moduleKey, 1, Integer::sum);
+            } else if ("fail".equalsIgnoreCase(test.result)) {
+                failed++;
+                moduleFailed.merge(moduleKey, 1, Integer::sum);
+
+                Map<String, Object> failure = new LinkedHashMap<>();
+                failure.put("suite", test.suite);
+                failure.put("module", test.abi.isBlank() ? test.module : test.abi + " " + test.module);
+                failure.put("testCase", test.testCase + "#" + test.name);
+                failure.put("details", firstNonBlank(test.details, "Test failed"));
+                failures.add(failure);
+            } else if ("assumption_failure".equalsIgnoreCase(test.result)
+                    || "assumption-failure".equalsIgnoreCase(test.result)) {
+                assumptionFailures++;
+                moduleAssumption.merge(moduleKey, 1, Integer::sum);
+            } else if ("ignored".equalsIgnoreCase(test.result)) {
+                ignored++;
+                moduleIgnored.merge(moduleKey, 1, Integer::sum);
             }
         }
 
-        int modulePassed = 0;
-        int moduleFailed = 0;
-        int moduleTests = 0;
-        int done = 0;
+        // Build module rows from unique test cases and preserve module done state.
+        Set<String> allModuleKeys = new LinkedHashSet<>(moduleInfo.keySet());
+        allModuleKeys.addAll(moduleTotal.keySet());
 
-        for (Map<String, Object> module : modules.values()) {
-            modulePassed += intValue(module.get("passed"));
-            moduleFailed += intValue(module.get("failed"));
-            moduleTests += intValue(module.get("totalTests"));
-            if (Boolean.TRUE.equals(module.get("done"))) {
-                done++;
+        List<Map<String, Object>> modules = new ArrayList<>();
+        List<Map<String, Object>> incomplete = new ArrayList<>();
+
+        for (String key : allModuleKeys) {
+            Map<String, Object> source = moduleInfo.getOrDefault(key, new LinkedHashMap<>());
+            String name = textValue(source.get("name"));
+            String abi = textValue(source.get("abi"));
+
+            if (name.isBlank()) {
+                int sep = key.indexOf('|');
+                abi = sep >= 0 ? key.substring(0, sep) : "";
+                name = sep >= 0 ? key.substring(sep + 1) : key;
+            }
+
+            boolean done = moduleDoneStates.getOrDefault(key,
+                    Boolean.TRUE.equals(source.get("done")));
+
+            Map<String, Object> module = new LinkedHashMap<>();
+            module.put("name", name);
+            module.put("abi", abi);
+            module.put("passed", modulePassed.getOrDefault(key, 0));
+            module.put("failed", moduleFailed.getOrDefault(key, 0));
+            module.put("assumptionFailures", moduleAssumption.getOrDefault(key, 0));
+            module.put("ignored", moduleIgnored.getOrDefault(key, 0));
+            module.put("totalTests", moduleTotal.getOrDefault(key, 0));
+            module.put("done", done);
+            modules.add(module);
+
+            if (!done) {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("suite", suite);
+                item.put("module", abi.isBlank() ? name : abi + " " + name);
+                item.put("failed", moduleFailed.getOrDefault(key, 0));
+                item.put("reason", "Module is marked done=false in Tradefed result");
+                incomplete.add(item);
             }
         }
 
-        int modulesTotal;
-        int modulesDone;
-        int passed;
-        int failed;
-        int assumptionFailures;
-        int ignored;
-        int testCases;
+        int modulesTotal = modules.size();
+        int modulesDone = (int) modules.stream()
+                .filter(m -> Boolean.TRUE.equals(m.get("done")))
+                .count();
 
-        if (!modules.isEmpty()) {
-            modulesTotal = modules.size();
-            modulesDone = done;
-            passed = modulePassed;
-            failed = moduleFailed;
-            assumptionFailures = modules.values().stream().mapToInt(m -> intValue(m.get("assumptionFailures"))).sum();
-            ignored = modules.values().stream().mapToInt(m -> intValue(m.get("ignored"))).sum();
-            testCases = moduleTests;
-        } else {
-            modulesTotal = reports.stream().mapToInt(r -> r.modules).sum();
-            modulesDone = reports.stream().mapToInt(r -> r.completedModules).sum();
+        int warnings = reports.stream().mapToInt(r -> r.warnings).max().orElse(0);
+        int testCases = passed + failed + assumptionFailures + ignored;
+
+        // If a report contains no individual Test nodes, retain its summary counters.
+        if (testResults.isEmpty()) {
             passed = reports.stream().mapToInt(r -> r.passed).sum();
             failed = reports.stream().mapToInt(r -> r.failed).sum();
-            assumptionFailures = assumptionFailureCount;
-            ignored = ignoredCount;
+            assumptionFailures = reports.stream().mapToInt(r -> r.assumptionFailures).sum();
+            ignored = reports.stream().mapToInt(r -> r.ignored).sum();
             testCases = passed + failed + assumptionFailures + ignored;
         }
 
@@ -552,7 +641,7 @@ public class DashboardController {
 
         ParsedReport merged = new ParsedReport(
                 suite, modulesTotal, modulesDone, testCases,
-                passed, failed, assumptionFailures, ignored, warningCount, status,
+                passed, failed, assumptionFailures, ignored, warnings, status,
                 mergedFingerprint, mergedPatch
         );
 
@@ -565,22 +654,10 @@ public class DashboardController {
         merged.release = release;
         merged.sdk = sdk;
         merged.abis = abis;
-        merged.moduleDetails = new ArrayList<>(modules.values());
-
-        for (Map<String, Object> failure : uniqueFailures.values()) {
-            merged.failures.add(failure);
-        }
-
-        for (Map<String, Object> module : merged.moduleDetails) {
-            if (!Boolean.TRUE.equals(module.get("done"))) {
-                Map<String, Object> item = new LinkedHashMap<>();
-                item.put("suite", merged.suite);
-                item.put("module", displayModuleName(module));
-                item.put("failed", intValue(module.get("failed")));
-                item.put("reason", "Module is marked done=false in Tradefed result");
-                merged.incompleteModules.add(item);
-            }
-        }
+        merged.moduleDetails = modules;
+        merged.failures.addAll(failures);
+        merged.incompleteModules.addAll(incomplete);
+        merged.testResults.addAll(testResults.values());
 
         return merged;
     }
@@ -743,6 +820,8 @@ public class DashboardController {
         List<Map<String, Object>> moduleDetails = List.of();
         List<Map<String, Object>> failures = List.of();
         List<Map<String, Object>> incomplete = List.of();
+        List<TestResultData> testResults = List.of();
+        Map<String, Boolean> moduleDoneStates = Map.of();
 
         int score() {
             return modulesTotal * 1_000_000 + testCases;
@@ -765,7 +844,32 @@ public class DashboardController {
             parsed.moduleDetails = moduleDetails;
             parsed.failures.addAll(failures);
             parsed.incompleteModules.addAll(incomplete);
+            parsed.testResults.addAll(testResults);
+            parsed.moduleDoneStates.putAll(moduleDoneStates);
             return parsed;
+        }
+    }
+
+    private static final class TestResultData {
+        final String key;
+        final String suite;
+        final String module;
+        final String abi;
+        final String testCase;
+        final String name;
+        final String result;
+        String details;
+
+        TestResultData(String key, String suite, String module, String abi,
+                       String testCase, String name, String result, String details) {
+            this.key = key;
+            this.suite = suite;
+            this.module = module;
+            this.abi = abi;
+            this.testCase = testCase;
+            this.name = name;
+            this.result = result;
+            this.details = details;
         }
     }
 
@@ -793,6 +897,8 @@ public class DashboardController {
         String sdk;
         String abis;
         List<Map<String, Object>> moduleDetails = List.of();
+        final List<TestResultData> testResults = new ArrayList<>();
+        final Map<String, Boolean> moduleDoneStates = new LinkedHashMap<>();
 
         final List<Map<String, Object>> incompleteModules = new ArrayList<>();
         final List<Map<String, Object>> failures = new ArrayList<>();
