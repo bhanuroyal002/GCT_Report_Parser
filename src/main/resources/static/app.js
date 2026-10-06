@@ -38,11 +38,11 @@ function render(){
   $("failureCount").textContent=fail.length;
   $("incompleteList").innerHTML=inc.length?inc.map(x=>`<div class="issue-row"><strong>${esc(x.suite)} · ${esc(x.module)}</strong><span>${esc(x.reason)}</span></div>`).join(""):"<div class='empty'>No incomplete modules.</div>";
   $("failureList").innerHTML=fail.length?fail.map(x=>`<div class="issue-row"><strong>${esc(x.suite)} · ${esc(x.module)} · ${esc(x.testCase)}</strong><span>${esc(x.details)}</span></div>`).join(""):"<div class='empty'>No failures detected.</div>";
-  $("publishBtn").disabled=false;
+  $("publishBtn").disabled=false;$("viewBtn").disabled=false;
 }
 $("reportFiles").addEventListener("change",e=>{state.files=[...e.target.files];renderFiles()});
 $("clearBtn").addEventListener("click",()=>{
-  state.files=[];state.data=null;$("reportFiles").value="";renderFiles();$("publishBtn").disabled=true;
+  state.files=[];state.data=null;$("reportFiles").value="";renderFiles();$("publishBtn").disabled=true;$("viewBtn").disabled=true;
   $("statusMessage").textContent="";$("stats").innerHTML="";$("suiteGrid").innerHTML="";$("suiteDetails").innerHTML="";
   $("incompleteList").innerHTML="";$("failureList").innerHTML="";
   $("readiness").textContent="WAITING FOR REPORTS";$("readiness").className="readiness-chip";
@@ -63,14 +63,27 @@ $("analyzeBtn").addEventListener("click",async()=>{
     $("readiness").className="readiness-chip attention";
   }finally{b.disabled=!state.files.length;b.textContent="Analyze Reports →"}
 });
+async function getDashboardUrl(){
+  if(!state.data)throw new Error("Analyze reports first");
+  const r=await fetch("/api/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(state.data)});
+  if(!r.ok)throw new Error("Publish failed");
+  return URL.createObjectURL(await r.blob());
+}
+$("viewBtn").addEventListener("click",async()=>{
+  const b=$("viewBtn");b.disabled=true;b.textContent="Opening dashboard…";
+  try{
+    const url=await getDashboardUrl();
+    const win=window.open(url,"_blank");
+    if(!win)throw new Error("Popup blocked. Please allow popups for this site.");
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e){alert(e.message)}finally{b.disabled=false;b.textContent="View Dashboard ↗"}
+});
 $("publishBtn").addEventListener("click",async()=>{
-  if(!state.data)return;
   const b=$("publishBtn");b.disabled=true;b.textContent="Preparing dashboard…";
   try{
-    const r=await fetch("/api/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(state.data)});
-    if(!r.ok)throw new Error("Publish failed");
-    const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement("a");
-    a.href=url;a.download="gct-certification-dashboard.html";a.click();URL.revokeObjectURL(url);
+    const url=await getDashboardUrl(),a=document.createElement("a");
+    a.href=url;a.download="gct-certification-dashboard.html";a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
   }catch(e){alert(e.message)}finally{b.disabled=false;b.textContent="Download Dashboard HTML ↓"}
 });
 renderFiles();
