@@ -18,10 +18,11 @@ function render(){
   $("readiness").className="readiness-chip "+(ready?"ready":"attention");
   const rate=((Number(o.passed||0)/Math.max(1,Number(o.totalTests||0)))*100).toFixed(1);
   $("stats").innerHTML=[
-    ["TOTAL TESTS",format(o.totalTests),"Across uploaded suites"],
-    ["PASSED",format(o.passed),rate+"% pass rate"],
-    ["FAILED",format(o.failed),"Actual Tradefed failures"],
-    ["WARNINGS",format(o.warnings),"Reported warnings"]
+    ["PASSED",format(o.passed),"Passed test cases"],
+    ["FAILED",format(o.failed),"Failed test cases"],
+    ["ASSUMPTION FAILURE",format(o.assumptionFailures),"Assumption failures"],
+    ["IGNORED",format(o.ignored),"Ignored test cases"],
+    ["TOTAL TESTS",format(o.totalTests),rate+"% pass rate"]
   ].map(x=>`<div class="stat"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></div>`).join("");
 
   $("suiteGrid").innerHTML=s.map(x=>{
@@ -30,8 +31,8 @@ function render(){
       <div class="suite-top"><h3>${esc(x.name)}</h3><span class="pill ${x.status==="COMPLETED"?"ok":"warn"}">${esc(x.status)}</span></div>
       <div class="suite-number">${format(x.completedModules)} / ${format(x.modules)} modules</div>
       <div class="progress"><i style="width:${p}%"></i></div>
-      <div class="suite-meta"><span>${format(x.testCases)} test cases</span><span>${p}% complete</span></div>
-      <div class="suite-fails">${format(x.failed)} failed · ${format(x.warnings)} warnings</div>
+      <div class="suite-meta"><span>${p}% complete</span><span>${format(x.testCases)} total tests</span></div>
+      <div class="suite-fails">${format(x.passed)} passed · ${format(x.failed)} failed · ${format(x.assumptionFailures)} assumption failure · ${format(x.ignored)} ignored</div>
     </article>`
   }).join("");
 
