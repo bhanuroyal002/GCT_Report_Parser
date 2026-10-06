@@ -2,20 +2,19 @@
 
 A Spring Boot web application for parsing Android certification **Tradefed result ZIPs** and generating a unified release-readiness dashboard.
 
-The tool is intended for Android TV / Embedded Android certification workflows where CTS, GTS, TVTS, STS, VTS and CTS-on-GSI results need to be reviewed together.
+The tool is intended for Android automation and certification workflows where multiple automation reports need to be reviewed together.
 
 ## Features
 
 - Upload one or more certification ZIP reports in a single analysis.
 - Recursively scans nested ZIP files for Tradefed `test_result.xml` files.
-- Detects the test suite directly from `Result/@suite_plan` and displays it in uppercase.
-- Uses `suite_name` only as a fallback when `suite_plan` is unavailable.
-- Groups reports by **suite + build fingerprint** so reports from different builds are not merged.
+- Detects report information directly from the Tradefed result data rather than relying on ZIP filenames.
+- Groups reports by build fingerprint so reports from different builds are not merged.
 - Detects multiple build fingerprints and stops testcase/module aggregation when builds do not match.
 - Merges split reports and reruns using testcase identity.
 - **Rerun rule:** if the same testcase passes in any report, its final status is treated as **PASS**. If it never passes, the final observed failure/status is retained.
 - Shows build fingerprint, Android version and security patch.
-- Shows suite module completion and test-result counts.
+- Shows module completion and test-result counts.
 - Highlights incomplete modules.
 - Lists final failed test cases and failure details.
 - Provides a stakeholder-facing dashboard that can be viewed or downloaded as standalone HTML.
@@ -23,17 +22,11 @@ The tool is intended for Android TV / Embedded Android certification workflows w
 
 ## Supported reports
 
-The parser is designed for Tradefed certification result archives containing `test_result.xml` for:
+The parser is designed for **automation and certification result archives** containing Tradefed `test_result.xml` files.
 
-- CTS
-- GTS
-- TVTS
-- STS
-- VTS
-- CTS-on-GSI
-- CTS-Verifier
+It supports processing certification automation reports, including **CTS Verifier** results.
 
-The suite name is **not determined from the ZIP filename**. The parser reads the `suite_plan` attribute from each Tradefed `test_result.xml`.
+The tool automatically analyzes the available report data and generates a consolidated dashboard without relying on hardcoded test-suite names.
 
 ## Requirements
 
@@ -45,7 +38,7 @@ The suite name is **not determined from the ZIP filename**. The parser reads the
 | Maven | **3.9 or later recommended** |
 | Git | Required to clone/update the repository |
 | Browser | Modern Chrome, Edge or Firefox |
-| RAM | **8 GB minimum recommended**; 16 GB+ preferred for large CTS/GTS/TVTS reports |
+| RAM | **8 GB minimum recommended**; 16 GB+ preferred for large reports |
 | Disk space | Sufficient space for uploaded ZIPs, extracted/processed reports and Maven dependencies |
 
 No database, Node.js, Python or Android SDK is required to run the web application.
@@ -137,16 +130,16 @@ http://localhost:8080
 
 The application starts in the **WAITING FOR REPORTS** state.
 
-### Step 2 — Select certification ZIP files
+### Step 2 — Select automation ZIP files
 
 Click **Drop report ZIPs here** or choose the ZIP files from your computer.
 
 You can select:
 
-- A single suite ZIP
-- Multiple suite ZIPs
+- A single automation report ZIP
+- Multiple automation report ZIPs
 - Multiple ZIPs containing split results
-- ZIPs containing nested Tradefed result ZIPs
+- ZIPs containing nested Tradefed result archives
 
 The ZIP must contain a Tradefed:
 
@@ -168,13 +161,13 @@ The server:
 
 1. Reads the uploaded ZIPs.
 2. Searches recursively for `test_result.xml`.
-3. Reads `suite_plan` and `suite_name`.
+3. Reads available report metadata.
 4. Detects build information.
 5. Parses modules and individual test results.
 6. Merges duplicate/split/rerun results.
 7. Builds the dashboard.
 
-For large CTS/GTS/TVTS reports, parsing may take some time.
+For large automation reports, parsing may take some time.
 
 ### Step 4 — Review build information
 
@@ -192,9 +185,9 @@ BUILD MISMATCH
 
 Test/module aggregation is intentionally stopped for mixed builds so results from different builds are not incorrectly combined.
 
-### Step 5 — Review suite results
+### Step 5 — Review results
 
-The dashboard provides, per suite:
+The dashboard provides consolidated report information including:
 
 - Total modules
 - Completed modules
@@ -229,7 +222,7 @@ PASS + PASS  -> PASS
 FAIL + FAIL  -> FAIL
 ```
 
-This is important for certification reruns. A testcase that passes in at least one execution is considered passed by the parser.
+This is important for automation reruns. A testcase that passes in at least one execution is considered passed by the parser.
 
 ### Step 8 — Publish the dashboard
 
@@ -252,7 +245,7 @@ WAITING FOR REPORTS
 
 ## Large report handling
 
-Certification reports can contain very large `test_result.xml` files.
+Automation reports can contain very large `test_result.xml` files.
 
 The parser uses a **StAX streaming XML parser** rather than DOM. This means the complete XML document is not loaded into a large in-memory DOM tree.
 
@@ -263,34 +256,26 @@ The application is also configured with:
 - Tomcat connection timeout: **120 seconds**
 - Spring Boot parser JVM heap: **512 MB initial / 4 GB maximum**
 
-For very large certification runs, use a machine with adequate RAM.
+For very large automation runs, use a machine with adequate RAM.
 
 ## Build grouping and merge rules
 
 Reports are grouped using:
 
 ```text
-Suite + Build Fingerprint
-```
-
-Example:
-
-```text
-CTS  + fingerprint-A -> Group A
-GTS  + fingerprint-A -> Group B
-CTS  + fingerprint-B -> Group C
+Build Fingerprint
 ```
 
 Reports with different fingerprints are never merged.
 
-When multiple suites use the same build fingerprint, the dashboard groups them under the same build information.
+When multiple automation reports use the same build fingerprint, their results can be consolidated into the same analysis.
 
 ## Report structure expected
 
 A normal Tradefed archive may look like:
 
 ```text
-CTS.zip
+AutomationReport.zip
 └── .../
     └── test_result.xml
 ```
@@ -298,7 +283,7 @@ CTS.zip
 Nested result archives are also supported:
 
 ```text
-TVTS.zip
+AutomationReport.zip
 ├── .../test_result.xml
 ├── .../result.zip
 │   └── .../test_result.xml
@@ -351,23 +336,11 @@ Individual file: 500 MB
 Total request:    1 GB
 ```
 
-### Suite is not detected
+### Report metadata is not detected
 
-Open the Tradefed `test_result.xml` and check the root `Result` element.
+Open the Tradefed `test_result.xml` and verify that the result metadata is present in the root `Result` element.
 
-The parser expects:
-
-```xml
-<Result suite_name="TVTS" suite_plan="tvts" ...>
-```
-
-The parser uses:
-
-```text
-suite_plan -> uppercase -> suite name
-```
-
-If `suite_plan` is missing, `suite_name` is used as a fallback.
+The parser uses the available report metadata and does not depend on the uploaded ZIP filename.
 
 ### Build mismatch is displayed
 
