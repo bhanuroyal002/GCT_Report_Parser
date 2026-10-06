@@ -9,6 +9,7 @@ import org.w3c.dom.*;
 import javax.xml.XMLConstants;
 import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.InputStream;
+import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.*;
@@ -120,29 +121,32 @@ public class DashboardController {
                 }
 
                 String name = entry.getName().toLowerCase(Locale.ROOT);
-
-                // A split Tradefed ZIP can contain multiple test_result.xml files.
-                // Every one is a real execution result and must be merged, not
-                // reduced to the largest result.
                 if (!name.endsWith("test_result.xml")) {
                     continue;
                 }
 
-                ReportData candidate = parseTradefedResult(zis, filenameSuite);
-                if (candidate != null) {
-                    candidates.add(candidate);
+                // Read the complete XML entry before parsing it. This prevents
+                // one XML parse failure from aborting the remaining split reports.
+                byte[] xmlBytes = zis.readAllBytes();
+
+                try (InputStream xmlInput = new ByteArrayInputStream(xmlBytes)) {
+                    ReportData candidate = parseTradefedResult(xmlInput, filenameSuite);
+                    if (candidate != null) {
+                        candidates.add(candidate);
+                    }
+                } catch (Exception ignoredEntry) {
+                    // Ignore only this result entry and continue scanning the ZIP.
                 }
             }
-        } catch (Exception ignored) {
-            // A malformed/unsupported ZIP is simply ignored; other uploaded suites can still be parsed.
+        } catch (Exception ignoredZip) {
+            // A malformed/unsupported ZIP is simply ignored; parsed entries are retained.
         }
 
         if (candidates.isEmpty()) {
             return ParsedReport.unknown();
         }
 
-        // Merge all splits contained inside this ZIP first. The outer analyze()
-        // method then merges this result with any other ZIPs for the same suite.
+        // A ZIP may contain several Tradefed split results. Merge all of them.
         List<ParsedReport> parsedReports = new ArrayList<>();
         for (ReportData candidate : candidates) {
             parsedReports.add(candidate.toParsedReport());
