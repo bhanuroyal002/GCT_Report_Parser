@@ -98,11 +98,38 @@ public class DashboardController {
         out.put("generatedAt", Instant.now().toString());
         out.put("buildFingerprint", fingerprint);
         out.put("securityPatch", patch);
-        String androidVersion = suites.stream()
-                .map(s -> textValue(s.get("release")))
-                .filter(v -> !v.isBlank() && !"Not detected".equalsIgnoreCase(v))
-                .findFirst()
-                .orElse("Not detected");
+
+        // Group all suites by unique build fingerprint. If CTS/GTS/VTS share
+        // the same fingerprint, they are represented as one build entry.
+        Map<String, Map<String, Object>> buildMap = new LinkedHashMap<>();
+        for (Map<String, Object> suite : suites) {
+            String fp = firstNonBlank(textValue(suite.get("fingerprint")), "Not detected");
+            String key = fp.toLowerCase(Locale.ROOT);
+
+            Map<String, Object> build = buildMap.computeIfAbsent(key, k -> {
+                Map<String, Object> item = new LinkedHashMap<>();
+                item.put("fingerprint", fp);
+                item.put("securityPatch", "Not detected");
+                item.put("androidVersion", "Not detected");
+                return item;
+            });
+
+            String suitePatch = textValue(suite.get("securityPatch"));
+            String suiteRelease = textValue(suite.get("release"));
+            if (!suitePatch.isBlank() && !"Not detected".equalsIgnoreCase(suitePatch)) {
+                build.put("securityPatch", suitePatch);
+            }
+            if (!suiteRelease.isBlank() && !"Not detected".equalsIgnoreCase(suiteRelease)) {
+                build.put("androidVersion", suiteRelease);
+            }
+        }
+
+        List<Map<String, Object>> builds = new ArrayList<>(buildMap.values());
+        out.put("builds", builds);
+
+        String androidVersion = builds.isEmpty()
+                ? "Not detected"
+                : textValue(builds.get(0).get("androidVersion"));
         out.put("androidVersion", androidVersion);
         out.put("fingerprints", new ArrayList<>(fingerprints));
         out.put("overall", overall);
