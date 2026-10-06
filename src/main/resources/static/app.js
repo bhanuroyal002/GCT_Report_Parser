@@ -11,8 +11,18 @@ function render(){
   const d=state.data;if(!d)return;
   $("buildFingerprint").textContent=d.buildFingerprint||"Not detected";
   $("securityPatch").textContent=d.securityPatch||"Not detected";
+  $("androidVersion").textContent=d.androidVersion||"Not detected";
   const o=d.overall||{},s=d.suites||[],inc=d.incompleteModules||[],fail=d.failures||[];
   const fingerprintMismatch=Boolean(o.fingerprintMismatch);
+  $("buildMismatch").innerHTML=fingerprintMismatch?(`
+    <div class="mismatch-panel">
+      <div class="panel-title"><div><span class="section-kicker">BUILD MISMATCH</span><h3>Test suite build fingerprints</h3></div><span class="count-badge danger">${format(s.length)} builds</span></div>
+      <p>Reports with different build fingerprints were kept separate and were not merged.</p>
+      <div class="fingerprint-table">
+        ${s.map(x=>`<div class="fingerprint-row"><strong>${esc(x.name)}</strong><span>${esc(x.fingerprint||"Not detected")}</span></div>`).join("")}
+      </div>
+    </div>`):"";
+
   const ready=s.length&&Number(o.failed||0)===0&&inc.length===0&&!fingerprintMismatch;
   $("readiness").textContent=fingerprintMismatch?"BUILD MISMATCH":(ready?"READY FOR REVIEW":"ATTENTION REQUIRED");
   $("readiness").className="readiness-chip "+(ready?"ready":"attention");
