@@ -34,9 +34,10 @@ public class DashboardController {
         String fingerprint = "Not detected";
         String patch = "Not detected";
 
-        // Multiple ZIPs can belong to the same suite. Parse every ZIP first,
-        // then merge reports by suite so the dashboard has one row per suite.
-        Map<String, List<ParsedReport>> reportsBySuite = new LinkedHashMap<>();
+        // Reports are merged only when BOTH suite and build fingerprint match.
+        // This prevents results from different device builds from being combined.
+        Map<String, List<ParsedReport>> reportsByBuild = new LinkedHashMap<>();
+        Set<String> fingerprints = new LinkedHashSet<>();
 
         for (MultipartFile file : files) {
             ParsedReport parsed = parse(file);
@@ -44,8 +45,14 @@ public class DashboardController {
                 continue;
             }
 
+            String reportFingerprint = firstNonBlank(parsed.fingerprint, "Not detected");
+            fingerprints.add(reportFingerprint);
+
             String suiteKey = parsed.suite.toLowerCase(Locale.ROOT);
-            reportsBySuite.computeIfAbsent(suiteKey, k -> new ArrayList<>()).add(parsed);
+            String fingerprintKey = reportFingerprint.toLowerCase(Locale.ROOT);
+            String groupKey = suiteKey + "||" + fingerprintKey;
+
+            reportsByBuild.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(parsed);
 
             if (!"Not detected".equals(parsed.fingerprint)) {
                 fingerprint = parsed.fingerprint;
@@ -55,11 +62,18 @@ public class DashboardController {
             }
         }
 
-        for (List<ParsedReport> reports : reportsBySuite.values()) {
+        for (List<ParsedReport> reports : reportsByBuild.values()) {
             ParsedReport merged = mergeReports(reports);
             suites.add(merged.toMap());
             incomplete.addAll(merged.incompleteModules);
             failures.addAll(merged.failures);
+        }
+
+        boolean fingerprintMismatch = fingerprints.size() > 1
+                && !fingerprints.contains("Not detected");
+
+        if (fingerprintMismatch) {
+            fingerprint = "MULTIPLE BUILDS DETECTED";
         }
 
         int total = suites.stream().mapToInt(s -> number(s.get("testCases"))).sum();
@@ -73,11 +87,14 @@ public class DashboardController {
         overall.put("failed", failed);
         overall.put("warnings", warnings);
         overall.put("blocked", incomplete.size());
+        overall.put("fingerprintMismatch", fingerprintMismatch);
+        overall.put("multipleBuilds", fingerprints.size() > 1);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("generatedAt", Instant.now().toString());
         out.put("buildFingerprint", fingerprint);
         out.put("securityPatch", patch);
+        out.put("fingerprints", new ArrayList<>(fingerprints));
         out.put("overall", overall);
         out.put("suites", suites);
         out.put("incompleteModules", incomplete);
