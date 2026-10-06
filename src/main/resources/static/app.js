@@ -70,6 +70,7 @@ $("clearBtn").addEventListener("click",()=>{
   state.files=[];state.data=null;$("reportFiles").value="";renderFiles();$("publishBtn").disabled=true;$("viewBtn").disabled=true;
   $("statusMessage").textContent="";$("stats").innerHTML="";$("suiteGrid").innerHTML="";
   $("incompleteList").innerHTML="";$("failureList").innerHTML="";
+  $("incompleteCount").textContent="0";$("failureCount").textContent="0";
   $("buildMismatch").innerHTML="";
   $("buildFingerprint").textContent="Not detected";
   $("androidVersion").textContent="Not detected";
