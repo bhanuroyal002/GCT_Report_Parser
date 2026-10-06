@@ -98,6 +98,12 @@ public class DashboardController {
         out.put("generatedAt", Instant.now().toString());
         out.put("buildFingerprint", fingerprint);
         out.put("securityPatch", patch);
+        String androidVersion = suites.stream()
+                .map(s -> textValue(s.get("release")))
+                .filter(v -> !v.isBlank() && !"Not detected".equalsIgnoreCase(v))
+                .findFirst()
+                .orElse("Not detected");
+        out.put("androidVersion", androidVersion);
         out.put("fingerprints", new ArrayList<>(fingerprints));
         out.put("overall", overall);
         out.put("suites", suites);
