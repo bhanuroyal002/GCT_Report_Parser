@@ -173,7 +173,18 @@ public class DashboardController {
             result = (Element) results.item(0);
         }
 
-        String suite = firstNonBlank(attr(result, "suite_name"), filenameSuite);
+        String xmlSuite = attr(result, "suite_name");
+
+        // CTS-on-GSI reports can contain suite_name="CTS" inside the XML.
+        // When the uploaded filename identifies the report as CTS-on-GSI,
+        // preserve that distinction instead of collapsing it into CTS.
+        String suite;
+        if ("CTS-on-GSI".equals(filenameSuite)) {
+            suite = "CTS-on-GSI";
+        } else {
+            suite = firstNonBlank(filenameSuite, xmlSuite);
+        }
+
         if (suite == null) {
             return null;
         }
