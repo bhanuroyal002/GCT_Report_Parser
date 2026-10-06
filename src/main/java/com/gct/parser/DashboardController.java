@@ -303,7 +303,7 @@ public class DashboardController {
         data.abis = abis;
         data.testCases = testCases;
         data.status = status;
-        data.modules = modules;
+        data.moduleDetails = modules;
         data.failures = failures;
         data.incomplete = incomplete;
         return data;
@@ -415,7 +415,7 @@ public class DashboardController {
         String sdk;
         String abis;
         String status;
-        List<Map<String, Object>> modules = List.of();
+        List<Map<String, Object>> moduleDetails = List.of();
         List<Map<String, Object>> failures = List.of();
         List<Map<String, Object>> incomplete = List.of();
 
@@ -437,7 +437,7 @@ public class DashboardController {
             parsed.release = release;
             parsed.sdk = sdk;
             parsed.abis = abis;
-            parsed.modules = modules;
+            parsed.moduleDetails = modules;
             parsed.failures.addAll(failures);
             parsed.incompleteModules.addAll(incomplete);
             return parsed;
@@ -465,7 +465,7 @@ public class DashboardController {
         String release;
         String sdk;
         String abis;
-        List<Map<String, Object>> modules = List.of();
+        List<Map<String, Object>> moduleDetails = List.of();
 
         final List<Map<String, Object>> incompleteModules = new ArrayList<>();
         final List<Map<String, Object>> failures = new ArrayList<>();
@@ -506,12 +506,8 @@ public class DashboardController {
             map.put("release", release);
             map.put("sdk", sdk);
             map.put("abis", abis);
-            map.put("moduleDetails", modulesList());
+            map.put("moduleDetails", moduleDetails);
             return map;
-        }
-
-        private List<Map<String, Object>> modulesList() {
-            return modules;
         }
 
         static ParsedReport unknown() {
