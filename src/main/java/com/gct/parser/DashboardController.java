@@ -437,7 +437,7 @@ public class DashboardController {
             parsed.release = release;
             parsed.sdk = sdk;
             parsed.abis = abis;
-            parsed.moduleDetails = modules;
+            parsed.moduleDetails = moduleDetails;
             parsed.failures.addAll(failures);
             parsed.incompleteModules.addAll(incomplete);
             return parsed;
