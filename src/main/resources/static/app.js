@@ -22,6 +22,21 @@ function render(){
   ):"";
 
   const ready=s.length&&Number(o.failed||0)===0&&inc.length===0&&!fingerprintMismatch;
+
+  // A build mismatch is a hard stop. Show only build information; do not
+  // present test-case/module counts from mixed builds.
+  const statsEl=$("stats");
+  const suiteEl=$("suiteGrid");
+  const issuesEl=document.querySelector(".issues-grid");
+  if(fingerprintMismatch){
+    statsEl.innerHTML="";
+    suiteEl.innerHTML="";
+    if(issuesEl) issuesEl.style.display="none";
+    $("publishBtn").disabled=false;
+    $("viewBtn").disabled=false;
+    return;
+  }
+  if(issuesEl) issuesEl.style.display="grid";
   $("readiness").textContent=fingerprintMismatch?"BUILD MISMATCH":(ready?"READY FOR REVIEW":"ATTENTION REQUIRED");
   $("readiness").className="readiness-chip "+(ready?"ready":"attention");
   const rate=((Number(o.passed||0)/Math.max(1,Number(o.totalTests||0)))*100).toFixed(1);
