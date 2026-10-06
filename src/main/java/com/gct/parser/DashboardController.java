@@ -287,13 +287,6 @@ public class DashboardController {
                     } else if ("fail".equalsIgnoreCase(resultValue)) {
                         moduleFailed++;
                         moduleFailTotal++;
-                    } else if ("assumption_failure".equalsIgnoreCase(resultValue)
-                            || "assumption-failure".equalsIgnoreCase(resultValue)) {
-                        moduleAssumptionFailures++;
-                        moduleAssumptionTotal++;
-                    } else if ("ignored".equalsIgnoreCase(resultValue)) {
-                        moduleIgnored++;
-                        moduleIgnoredTotal++;
 
                         Element failure = directChild(test, "Failure");
                         String message = failure == null ? "" : firstNonBlank(
@@ -308,6 +301,13 @@ public class DashboardController {
                                         + firstNonBlank(attr(test, "name"), "Unknown Test"),
                                 "details", firstNonBlank(message, "Test failed")
                         ));
+                    } else if ("assumption_failure".equalsIgnoreCase(resultValue)
+                            || "assumption-failure".equalsIgnoreCase(resultValue)) {
+                        moduleAssumptionFailures++;
+                        moduleAssumptionTotal++;
+                    } else if ("ignored".equalsIgnoreCase(resultValue)) {
+                        moduleIgnored++;
+                        moduleIgnoredTotal++;
                     }
                 }
             }
