@@ -40,25 +40,28 @@ public class DashboardController {
         Set<String> fingerprints = new LinkedHashSet<>();
 
         for (MultipartFile file : files) {
-            ParsedReport parsed = parse(file);
-            if (parsed.suite == null) {
-                continue;
-            }
+            List<ParsedReport> parsedReports = parse(file);
 
-            String reportFingerprint = firstNonBlank(parsed.fingerprint, "Not detected");
-            fingerprints.add(reportFingerprint);
+            for (ParsedReport parsed : parsedReports) {
+                if (parsed.suite == null) {
+                    continue;
+                }
 
-            String suiteKey = parsed.suite.toLowerCase(Locale.ROOT);
-            String fingerprintKey = reportFingerprint.toLowerCase(Locale.ROOT);
-            String groupKey = suiteKey + "||" + fingerprintKey;
+                String reportFingerprint = firstNonBlank(parsed.fingerprint, "Not detected");
+                fingerprints.add(reportFingerprint);
 
-            reportsByBuild.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(parsed);
+                String suiteKey = parsed.suite.toLowerCase(Locale.ROOT);
+                String fingerprintKey = reportFingerprint.toLowerCase(Locale.ROOT);
+                String groupKey = suiteKey + "||" + fingerprintKey;
 
-            if (!"Not detected".equals(parsed.fingerprint)) {
-                fingerprint = parsed.fingerprint;
-            }
-            if (!"Not detected".equals(parsed.patch)) {
-                patch = parsed.patch;
+                reportsByBuild.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(parsed);
+
+                if (!"Not detected".equals(parsed.fingerprint)) {
+                    fingerprint = parsed.fingerprint;
+                }
+                if (!"Not detected".equals(parsed.patch)) {
+                    patch = parsed.patch;
+                }
             }
         }
 
@@ -173,7 +176,20 @@ public class DashboardController {
                 .body(html.getBytes(StandardCharsets.UTF_8));
     }
 
-    private ParsedReport parse(MultipartFile file) {
+    /**
+     * Extract every Tradefed result independently from the uploaded archive.
+     *
+     * The ZIP hierarchy is traversed level by level:
+     * 1. Check every entry for test_result.xml.
+     * 2. Keep every unique XML result that is found.
+     * 3. If an entry is another ZIP, open it and repeat the same check.
+     * 4. Continue until the deepest nested ZIP has been processed.
+     *
+     * Exact duplicate XML files are removed by SHA-256. Different XML reports
+     * are kept independently so they can later be compared and merged using
+     * testcase/module identity.
+     */
+    private List<ParsedReport> parse(MultipartFile file) {
         List<ReportData> candidates = new ArrayList<>();
         Set<String> seenXml = new HashSet<>();
 
@@ -184,24 +200,51 @@ public class DashboardController {
         }
 
         if (candidates.isEmpty()) {
-            return ParsedReport.unknown();
+            return List.of();
         }
 
+        // First convert each unique XML into an independent report.
         List<ParsedReport> parsedReports = new ArrayList<>();
         for (ReportData candidate : candidates) {
-            parsedReports.add(candidate.toParsedReport());
+            ParsedReport report = candidate.toParsedReport();
+            if (report.suite != null) {
+                parsedReports.add(report);
+            }
         }
-        return mergeReports(parsedReports);
+
+        // Merge only reports that belong to the same logical suite/build group.
+        // Different reports remain separate until this grouping decision is made.
+        Map<String, List<ParsedReport>> groups = new LinkedHashMap<>();
+        for (ParsedReport report : parsedReports) {
+            String suiteKey = firstNonBlank(report.suite, "unknown")
+                    .toLowerCase(Locale.ROOT);
+            String fingerprintKey = firstNonBlank(report.fingerprint, "Not detected")
+                    .toLowerCase(Locale.ROOT);
+            String key = suiteKey + "||" + fingerprintKey;
+            groups.computeIfAbsent(key, k -> new ArrayList<>()).add(report);
+        }
+
+        List<ParsedReport> mergedReports = new ArrayList<>();
+        for (List<ParsedReport> group : groups.values()) {
+            mergedReports.add(mergeReports(group));
+        }
+
+        return mergedReports;
     }
 
     /**
-     * Recursively scans ZIP files because Tradefed result archives can contain
-     * additional result ZIPs inside the top-level suite ZIP.
+     * Recursively scans every ZIP level.
+     *
+     * At each level we always perform both checks:
+     * - test_result.xml -> parse and keep it
+     * - nested .zip      -> open it and repeat the same process
+     *
+     * This supports ZIP -> ZIP -> ZIP -> test_result.xml and deeper structures.
      */
     private void collectReportsFromZip(byte[] zipBytes,
                                        List<ReportData> candidates, Set<String> seenXml,
                                        int depth) throws Exception {
-        if (depth > 4) {
+        if (depth > 20) {
             return;
         }
 
@@ -215,9 +258,12 @@ public class DashboardController {
                 String name = entry.getName().toLowerCase(Locale.ROOT);
                 byte[] entryBytes = zis.readAllBytes();
 
+                // Check for a result XML at this ZIP level.
                 if (name.endsWith("test_result.xml")) {
                     String hash = Base64.getEncoder().encodeToString(
                             java.security.MessageDigest.getInstance("SHA-256").digest(entryBytes));
+
+                    // Exact duplicate XML: keep only the first copy.
                     if (!seenXml.add(hash)) {
                         continue;
                     }
@@ -228,13 +274,18 @@ public class DashboardController {
                             candidates.add(candidate);
                         }
                     } catch (Exception ignoredEntry) {
-                        // Ignore only this result entry and continue scanning.
+                        // Ignore only this invalid XML and continue scanning.
                     }
-                } else if (name.endsWith(".zip")) {
+                }
+
+                // Check for a nested ZIP at this same level as well.
+                // Do not use else-if: a ZIP level must always continue scanning
+                // all of its entries, including both XMLs and nested archives.
+                if (name.endsWith(".zip")) {
                     try {
                         collectReportsFromZip(entryBytes, candidates, seenXml, depth + 1);
                     } catch (Exception ignoredNestedZip) {
-                        // Ignore unrelated/corrupt nested ZIPs.
+                        // Ignore only this invalid/unreadable nested ZIP.
                     }
                 }
             }
