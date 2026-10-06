@@ -267,6 +267,7 @@ public class DashboardController {
         String xmlSuite = attr(result, "suite_name");
         String suitePlan = attr(result, "suite_plan");
         String suite = normalizeSuiteName(xmlSuite, suitePlan);
+        String normalizedSuitePlan = normalizeSuitePlan(suitePlan, xmlSuite);
 
         if (suite == null) {
             return null;
@@ -433,7 +434,7 @@ public class DashboardController {
 
         ReportData data = new ReportData();
         data.suite = suite;
-        data.plan = suitePlan;
+        data.plan = normalizedSuitePlan;
         data.version = suiteVersion;
         data.buildNumber = suiteBuild;
         data.hostInfo = buildHostInfo(hostName, osName, osVersion);
@@ -698,31 +699,45 @@ public class DashboardController {
     }
 
     /**
-     * The suite identity comes from Tradefed's Result/@suite_name.
-     * Uploaded filenames are intentionally ignored so the parser works
-     * with arbitrary report archive names.
+     * Tradefed reports contain both Result/@suite_name and Result/@suite_plan.
+     * The suite plan is the authoritative test-suite identifier for this parser.
+     *
+     * Examples:
+     *   suite_plan="cts"        -> CTS
+     *   suite_plan="gts"        -> GTS
+     *   suite_plan="tvts"       -> TVTS
+     *   suite_plan="cts-on-gsi" -> CTS-ON-GSI
+     *
+     * suite_name is used only as a fallback when suite_plan is missing.
      */
     private static String normalizeSuiteName(String suiteName, String suitePlan) {
-        if (suiteName == null || suiteName.isBlank()) {
+        String normalizedPlan = suitePlan == null ? null : suitePlan.trim();
+        if (normalizedPlan != null && !normalizedPlan.isBlank()) {
+            return normalizedPlan.toUpperCase(Locale.ROOT);
+        }
+
+        String normalizedSuite = suiteName == null ? null : suiteName.trim();
+        if (normalizedSuite == null || normalizedSuite.isBlank()) {
             return null;
         }
 
-        String normalized = suiteName.trim();
+        return normalizedSuite.toUpperCase(Locale.ROOT);
+    }
 
-        // CTS-on-GSI reports use suite_name="CTS", but their suite_plan
-        // explicitly identifies the execution as cts-on-gsi.
-        if ("CTS".equalsIgnoreCase(normalized)
-                && "cts-on-gsi".equalsIgnoreCase(suitePlan == null ? "" : suitePlan.trim())) {
-            return "CTS-on-GSI";
+    /**
+     * Preserve the normalized suite plan separately in the parsed report.
+     * If a report does not provide suite_plan, fall back to suite_name.
+     */
+    private static String normalizeSuitePlan(String suitePlan, String suiteName) {
+        String normalizedPlan = suitePlan == null ? null : suitePlan.trim();
+        if (normalizedPlan != null && !normalizedPlan.isBlank()) {
+            return normalizedPlan.toUpperCase(Locale.ROOT);
         }
 
-        if ("CTS_VERIFIER".equalsIgnoreCase(normalized)
-                || "CTS-VERIFIER".equalsIgnoreCase(normalized)
-                || "CTS VERIFIER".equalsIgnoreCase(normalized)) {
-            return "CTS-Verifier";
-        }
-
-        return normalized;
+        String normalizedSuite = suiteName == null ? null : suiteName.trim();
+        return normalizedSuite == null || normalizedSuite.isBlank()
+                ? null
+                : normalizedSuite.toUpperCase(Locale.ROOT);
     }
 
     private static Element directChild(Element parent, String tagName) {
@@ -798,141 +813,3 @@ public class DashboardController {
         String patch;
         String release;
         String sdk;
-        String abis;
-        String status;
-        List<Map<String, Object>> moduleDetails = List.of();
-        List<Map<String, Object>> failures = List.of();
-        List<Map<String, Object>> incomplete = List.of();
-        List<TestResultData> testResults = List.of();
-        Map<String, Boolean> moduleDoneStates = Map.of();
-
-        int score() {
-            return modulesTotal * 1_000_000 + testCases;
-        }
-
-        ParsedReport toParsedReport() {
-            ParsedReport parsed = new ParsedReport(
-                    suite, modulesTotal, modulesDone, testCases,
-                    passed, failed, assumptionFailures, ignored, warnings, status, fingerprint, patch
-            );
-            parsed.plan = plan;
-            parsed.version = version;
-            parsed.buildNumber = buildNumber;
-            parsed.hostInfo = hostInfo;
-            parsed.start = start;
-            parsed.end = end;
-            parsed.release = release;
-            parsed.sdk = sdk;
-            parsed.abis = abis;
-            parsed.moduleDetails = moduleDetails;
-            parsed.failures.addAll(failures);
-            parsed.incompleteModules.addAll(incomplete);
-            parsed.testResults.addAll(testResults);
-            parsed.moduleDoneStates.putAll(moduleDoneStates);
-            return parsed;
-        }
-    }
-
-    private static final class TestResultData {
-        final String key;
-        final String suite;
-        final String module;
-        final String abi;
-        final String testCase;
-        final String name;
-        final String result;
-        String details;
-
-        TestResultData(String key, String suite, String module, String abi,
-                       String testCase, String name, String result, String details) {
-            this.key = key;
-            this.suite = suite;
-            this.module = module;
-            this.abi = abi;
-            this.testCase = testCase;
-            this.name = name;
-            this.result = result;
-            this.details = details;
-        }
-    }
-
-    private static final class ParsedReport {
-        final String suite;
-        final int modules;
-        final int completedModules;
-        final int testCases;
-        final int passed;
-        final int failed;
-        final int assumptionFailures;
-        final int ignored;
-        final int warnings;
-        final String status;
-        final String fingerprint;
-        final String patch;
-
-        String plan;
-        String version;
-        String buildNumber;
-        String hostInfo;
-        String start;
-        String end;
-        String release;
-        String sdk;
-        String abis;
-        List<Map<String, Object>> moduleDetails = List.of();
-        final List<TestResultData> testResults = new ArrayList<>();
-        final Map<String, Boolean> moduleDoneStates = new LinkedHashMap<>();
-
-        final List<Map<String, Object>> incompleteModules = new ArrayList<>();
-        final List<Map<String, Object>> failures = new ArrayList<>();
-
-        ParsedReport(String suite, int modules, int completedModules, int testCases,
-                     int passed, int failed, int assumptionFailures, int ignored, int warnings,
-                     String status, String fingerprint, String patch) {
-            this.suite = suite;
-            this.modules = modules;
-            this.completedModules = completedModules;
-            this.testCases = testCases;
-            this.passed = passed;
-            this.failed = failed;
-            this.assumptionFailures = assumptionFailures;
-            this.ignored = ignored;
-            this.warnings = warnings;
-            this.status = status;
-            this.fingerprint = fingerprint;
-            this.patch = patch;
-        }
-
-        Map<String, Object> toMap() {
-            Map<String, Object> map = new LinkedHashMap<>();
-            map.put("name", suite);
-            map.put("plan", plan);
-            map.put("version", version);
-            map.put("buildNumber", buildNumber);
-            map.put("hostInfo", hostInfo);
-            map.put("start", start);
-            map.put("end", end);
-            map.put("passed", passed);
-            map.put("failed", failed);
-            map.put("assumptionFailures", assumptionFailures);
-            map.put("ignored", ignored);
-            map.put("warnings", warnings);
-            map.put("modules", modules);
-            map.put("completedModules", completedModules);
-            map.put("testCases", testCases);
-            map.put("status", status);
-            map.put("fingerprint", fingerprint);
-            map.put("securityPatch", patch);
-            map.put("release", release);
-            map.put("sdk", sdk);
-            map.put("abis", abis);
-            map.put("moduleDetails", moduleDetails);
-            return map;
-        }
-
-        static ParsedReport unknown() {
-            return new ParsedReport(null, 0, 0, 0, 0, 0, 0, 0, 0,
-                    "UNSUPPORTED", "Not detected", "Not detected");
-        }
-    }
-}
