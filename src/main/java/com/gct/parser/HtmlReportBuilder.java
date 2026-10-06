@@ -56,10 +56,11 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
 
         h.append("<section class='section'><div class='title'>Build Information</div>");
         if (fingerprintMismatch && !builds.isEmpty()) {
-            h.append("<div class='table-wrap'><table><thead><tr><th>Build</th><th>Fingerprint</th><th>Android Version</th><th>Security Patch</th></tr></thead><tbody>");
+            h.append("<div class='table-wrap'><table><thead><tr><th>Build</th><th>Suite</th><th>Fingerprint</th><th>Android Version</th><th>Security Patch</th></tr></thead><tbody>");
             for (int i = 0; i < builds.size(); i++) {
                 Map<String, Object> build = builds.get(i);
                 h.append("<tr><td><strong>Build ").append((char) ('A' + i)).append("</strong></td>")
+                        .append("<td>").append(e(text(build.get("suites")))).append("</td>")
                         .append("<td>").append(e(text(build.get("fingerprint")))).append("</td>")
                         .append("<td>").append(e(text(build.get("androidVersion")))).append("</td>")
                         .append("<td>").append(e(text(build.get("securityPatch")))).append("</td></tr>");
