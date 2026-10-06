@@ -109,7 +109,7 @@ public class DashboardController {
 
     private ParsedReport parse(MultipartFile file) {
         String filenameSuite = detectSuite(file.getOriginalFilename());
-        ReportData best = null;
+        List<ReportData> candidates = new ArrayList<>();
 
         try (ZipInputStream zis = new ZipInputStream(file.getInputStream())) {
             ZipEntry entry;
@@ -121,25 +121,33 @@ public class DashboardController {
 
                 String name = entry.getName().toLowerCase(Locale.ROOT);
 
-                // Tradefed/Compatibility result reports are normally stored as test_result.xml.
+                // A split Tradefed ZIP can contain multiple test_result.xml files.
+                // Every one is a real execution result and must be merged, not
+                // reduced to the largest result.
                 if (!name.endsWith("test_result.xml")) {
                     continue;
                 }
 
                 ReportData candidate = parseTradefedResult(zis, filenameSuite);
-                if (candidate != null && (best == null || candidate.score() > best.score())) {
-                    best = candidate;
+                if (candidate != null) {
+                    candidates.add(candidate);
                 }
             }
         } catch (Exception ignored) {
             // A malformed/unsupported ZIP is simply ignored; other uploaded suites can still be parsed.
         }
 
-        if (best == null) {
+        if (candidates.isEmpty()) {
             return ParsedReport.unknown();
         }
 
-        return best.toParsedReport();
+        // Merge all splits contained inside this ZIP first. The outer analyze()
+        // method then merges this result with any other ZIPs for the same suite.
+        List<ParsedReport> parsedReports = new ArrayList<>();
+        for (ReportData candidate : candidates) {
+            parsedReports.add(candidate.toParsedReport());
+        }
+        return mergeReports(parsedReports);
     }
 
     private ReportData parseTradefedResult(InputStream input, String filenameSuite) throws Exception {
