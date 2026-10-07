@@ -1,15 +1,217 @@
-const $=id=>document.getElementById(id),state={files:[],data:null},esc=x=>String(x??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])),fmt=x=>Number(x||0).toLocaleString("en-IN");
-$("reportFiles").onchange=e=>{state.files=[...e.target.files];$("selectedFiles").innerHTML=state.files.map(f=>`<span class="file">${esc(f.name)}</span>`).join("");$("analyzeBtn").disabled=!state.files.length;$("clearBtn").disabled=!state.files.length};
-$("clearBtn").onclick=()=>location.reload();
-function render(d){state.data=d;let o=d.overall||{},m=!!o.fingerprintMismatch,b=d.builds?.[0]||{};$("buildFingerprint").textContent=m?"MULTIPLE BUILDS":b.fingerprint||"Not detected";$("securityPatch").textContent=m?"MULTIPLE":b.securityPatch||"Not detected";$("androidVersion").textContent=m?"MULTIPLE":b.androidVersion||"Not detected";$("readiness").textContent=m?"BUILD MISMATCH":o.failed===0&&!(d.incompleteModules||[]).length?"READY FOR REVIEW":"ATTENTION REQUIRED";$("readiness").className=m?"bad":o.failed===0?"good":"bad";
-$("buildMismatch").innerHTML=m?`<section><h2>Build Mismatch</h2><table><tr><th>Build</th><th>Suites</th><th>Fingerprint</th><th>Android</th><th>Patch</th></tr>${d.builds.map((x,i)=>`<tr><td>Build ${String.fromCharCode(65+i)}</td><td>${esc((x.suites||[]).join(", "))}</td><td>${esc(x.fingerprint)}</td><td>${esc(x.androidVersion)}</td><td>${esc(x.securityPatch)}</td></tr>`).join("")}</table></section>`:"";
-$("buildInfoCard").innerHTML=m?"":`<section><h2>Build Information</h2><div class="build"><div>Fingerprint<strong>${esc(b.fingerprint)}</strong></div><div>Android<strong>${esc(b.androidVersion)}</strong></div><div>Security Patch<strong>${esc(b.securityPatch)}</strong></div><div>Build ID<strong>${esc(b.buildId)}</strong></div><div>SDK<strong>${esc(b.sdk)}</strong></div><div>Architecture<strong>${esc(b.abis)}</strong></div></div></section>`;
-if(m){$("stats").innerHTML=$("suiteGrid").innerHTML="";document.querySelector(".two").style.display="none";$("viewBtn").disabled=$("publishBtn").disabled=false;return}document.querySelector(".two").style.display="grid";
-$("stats").innerHTML=[["PASSED",o.passed],["FAILED",o.failed],["ASSUMPTION",o.assumptionFailures],["IGNORED",o.ignored],["TOTAL",o.totalTests]].map(x=>`<div><small>${x[0]}</small><strong>${fmt(x[1])}</strong></div>`).join("");
-$("suiteGrid").innerHTML=(d.suites||[]).map(x=>`<article><div><h3>${esc(x.name)}</h3><b>${esc(x.status)}</b></div><strong>${fmt(x.completedModules)} / ${fmt(x.modules)} modules</strong><div class="bar"><i style="width:${x.modules?x.completedModules/x.modules*100:0}%"></i></div><small>${fmt(x.passed)} passed · ${fmt(x.failed)} failed · ${fmt(x.testCases)} tests</small></article>`).join("");
-let inc=d.incompleteModules||[],fail=d.failures||[];$("incompleteCount").textContent=inc.length;$("failureCount").textContent=fail.length;$("incompleteList").innerHTML=inc.length?inc.map(x=>`<div class="issue"><b>${esc(x.suite)} · ${esc(x.module)}</b><small>${esc(x.reason)}</small></div>`).join(""):"<p class='ok'>No incomplete modules.</p>";$("failureList").innerHTML=fail.length?fail.map(x=>`<div class="issue"><b>${esc(x.suite)} · ${esc(x.module)} · ${esc(x.testCase)}</b><small>${esc(x.details)}</small></div>`).join(""):"<p class='ok'>No failed test cases.</p>";$("viewBtn").disabled=$("publishBtn").disabled=false}
-$("analyzeBtn").onclick=async()=>{let b=$("analyzeBtn");b.disabled=true;b.textContent="Analyzing…";try{let f=new FormData();state.files.forEach(x=>f.append("files",x));let r=await fetch("/api/analyze",{method:"POST",body:f}),d=await r.json();if(!r.ok)throw Error(d.error);render(d);$("statusMessage").textContent=`Analysis complete: ${d.recognizedReports} report(s), ${d.builds.length} build(s), ${d.suites.length} suite(s).`;loadHistory()}catch(e){$("statusMessage").textContent=e.message}finally{b.disabled=false;b.textContent="Analyze Reports →"}};
-async function publish(d,download){let r=await fetch("/api/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)});if(!r.ok)throw Error("Publish failed");let u=URL.createObjectURL(await r.blob());if(download){let a=document.createElement("a");a.href=u;a.download="gct-certification-dashboard.html";a.click()}else window.open(u,"_blank");setTimeout(()=>URL.revokeObjectURL(u),60000)}
-$("viewBtn").onclick=()=>publish(state.data,false);$("publishBtn").onclick=()=>publish(state.data,true);
-async function loadHistory(){let r=await fetch("/api/history"),d=await r.json(),rows=d.runs||[];$("historyCount").textContent=`${rows.length} / ${d.maxRuns}`;$("historyList").innerHTML=rows.length?rows.map((x,i)=>`<div class="history"><div><b>#${rows.length-i}</b><small>${esc(new Date(x.analyzedAt).toLocaleString("en-IN"))}</small></div><div><small>BUILD</small><b>${esc(x.buildFingerprint||"Not detected")}</b></div><span>${fmt(x.suiteCount)} suites · ${fmt(x.totalTests)} tests · ${fmt(x.failed)} failed</span><b>${esc(x.status)}</b><button onclick="openRun('${esc(x.runId)}',false)" class="secondary">View</button><button onclick="openRun('${esc(x.runId)}',true)">Download</button></div>`).join(""):"<p class='ok'>No successful analysis runs stored yet.</p>"}
-async function openRun(id,dl){let r=await fetch("/api/history/"+encodeURIComponent(id));if(!r.ok)return alert("Historical run not found");publish(await r.json(),dl)}loadHistory();
+const state={data:null,files:[]};
+const $=id=>document.getElementById(id);
+const format=n=>Number(n||0).toLocaleString("en-IN");
+const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function renderFiles(){
+  $("selectedFiles").innerHTML=state.files.map(f=>`<span class="file-chip">${esc(f.name)} <small>(${Math.round(f.size/1024)} KB)</small></span>`).join("");
+  $("analyzeBtn").disabled=!state.files.length;
+  $("clearBtn").disabled=!state.files.length;
+}
+function render(){
+  const d=state.data;if(!d)return;
+  const o=d.overall||{},s=d.suites||[],inc=d.incompleteModules||[],fail=d.failures||[];
+  const builds=d.builds||[];
+  const fingerprintMismatch=Boolean(o.fingerprintMismatch);
+  const primaryBuild=builds[0]||{};
+  $("buildFingerprint").textContent=fingerprintMismatch?"MULTIPLE BUILDS DETECTED":(primaryBuild.fingerprint||d.buildFingerprint||"Not detected");
+  $("securityPatch").textContent=fingerprintMismatch?"MULTIPLE":(primaryBuild.securityPatch||d.securityPatch||"Not detected");
+  $("androidVersion").textContent=fingerprintMismatch?"MULTIPLE":(primaryBuild.androidVersion||d.androidVersion||"Not detected");
+
+  $("buildMismatch").innerHTML=fingerprintMismatch?(
+    `<div class="mismatch-panel"><div class="panel-title"><div><span class="section-kicker">BUILD MISMATCH</span><h3>Build information</h3></div><span class="count-badge danger">${format(builds.length)} builds</span></div><p>Reports with the same build fingerprint are grouped into one build entry.</p><div class="fingerprint-table">${builds.map((x,i)=>`<div class="fingerprint-row"><strong>Build ${String.fromCharCode(65+i)}</strong><span><b>Suite:</b> ${esc((x.suites||[]).join(", ")||"Not detected")}<br><b>Fingerprint:</b> ${esc(x.fingerprint||"Not detected")}<br><b>Android:</b> ${esc(x.androidVersion||"Not detected")}<br><b>Security Patch:</b> ${esc(x.securityPatch||"Not detected")}<br><b>Build ID:</b> ${esc(x.buildId||"Not detected")}<br><b>SDK:</b> ${esc(x.sdk||"Not detected")}<br><b>Architecture:</b> ${esc(x.abis||"Not detected")}</span></div>`).join("")}</div></div>`
+  ):"";
+
+  $("buildInfoCard").innerHTML=fingerprintMismatch?"":`
+    <section class="build-info-section">
+      <div class="build-info-header">
+        <div><span class="section-kicker">BUILD INFORMATION</span><h3>Device build details</h3></div>
+        <span class="build-info-count">${format(builds.length)} build${builds.length===1?"":"s"}</span>
+      </div>
+      <div class="build-info-grid">
+        <div class="build-info-item wide"><span>Build Fingerprint</span><strong>${esc(primaryBuild.fingerprint||d.buildFingerprint||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Android Version</span><strong>${esc(primaryBuild.androidVersion||d.androidVersion||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Security Patch</span><strong>${esc(primaryBuild.securityPatch||d.securityPatch||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Build ID</span><strong>${esc(primaryBuild.buildId||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>SDK Version</span><strong>${esc(primaryBuild.sdk||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Architecture</span><strong>${esc(primaryBuild.abis||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Suites in This Build</span><strong>${esc((primaryBuild.suites||[]).join(", ")||"Not detected")}</strong></div>
+      </div>
+    </section>`;
+
+  const ready=s.length&&Number(o.failed||0)===0&&inc.length===0&&!fingerprintMismatch;
+
+  // A build mismatch is a hard stop. Show only build information; do not
+  // present test-case/module counts from mixed builds.
+  const statsEl=$("stats");
+  const suiteEl=$("suiteGrid");
+  const issuesEl=document.querySelector(".issues-grid");
+  if(fingerprintMismatch){
+    statsEl.innerHTML="";
+    suiteEl.innerHTML="";
+    if(issuesEl) issuesEl.style.display="none";
+    $("publishBtn").disabled=false;
+    $("viewBtn").disabled=false;
+    return;
+  }
+  if(issuesEl) issuesEl.style.display="grid";
+  $("readiness").textContent=fingerprintMismatch?"BUILD MISMATCH":(ready?"READY FOR REVIEW":"ATTENTION REQUIRED");
+  $("readiness").className="readiness-chip "+(ready?"ready":"attention");
+  const rate=((Number(o.passed||0)/Math.max(1,Number(o.totalTests||0)))*100).toFixed(1);
+  $("stats").innerHTML=[
+    ["PASSED",format(o.passed),"Passed test cases"],
+    ["FAILED",format(o.failed),"Failed test cases"],
+    ["ASSUMPTION FAILURE",format(o.assumptionFailures),"Assumption failures"],
+    ["IGNORED",format(o.ignored),"Ignored test cases"],
+    ["TOTAL TESTS",format(o.totalTests),rate+"% pass rate"]
+  ].map(x=>`<div class="stat"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></div>`).join("");
+
+  $("suiteGrid").innerHTML=s.map(x=>{
+    const p=x.modules?Math.round(x.completedModules/x.modules*100):0;
+    return `<article class="suite">
+      <div class="suite-top"><h3>${esc(x.name)}</h3><span class="pill ${x.status==="COMPLETED"?"ok":"warn"}">${esc(x.status)}</span></div>
+      <div class="suite-number">${format(x.completedModules)} / ${format(x.modules)} modules</div>
+      <div class="progress"><i style="width:${p}%"></i></div>
+      <div class="suite-meta"><span>${p}% complete</span><span>${format(x.testCases)} total tests</span></div>
+      <div class="suite-fails">${format(x.passed)} passed · ${format(x.failed)} failed · ${format(x.assumptionFailures)} assumption failure · ${format(x.ignored)} ignored</div>
+    </article>`
+  }).join("");
+
+  $("incompleteCount").textContent=inc.length;
+  $("failureCount").textContent=fail.length;
+  $("incompleteList").innerHTML=inc.length?inc.map(x=>`<div class="issue-row"><strong>${esc(x.suite)} · ${esc(x.module)}</strong><span>${esc(x.reason)}</span></div>`).join(""):"<div class='empty'>No incomplete modules.</div>";
+  $("failureList").innerHTML=fail.length?fail.map(x=>`<div class="issue-row"><strong>${esc(x.suite)} · ${esc(x.module)} · ${esc(x.testCase)}</strong><span>${esc(x.details)}</span></div>`).join(""):"<div class='empty'>No failures detected.</div>";
+  $("publishBtn").disabled=false;$("viewBtn").disabled=false;
+}
+$("reportFiles").addEventListener("change",e=>{state.files=[...e.target.files];renderFiles()});
+$("clearBtn").addEventListener("click",()=>{
+  state.files=[];state.data=null;$("reportFiles").value="";renderFiles();
+loadHistory();$("publishBtn").disabled=true;$("viewBtn").disabled=true;
+  $("statusMessage").textContent="";$("stats").innerHTML="";$("suiteGrid").innerHTML="";
+  $("incompleteList").innerHTML="";$("failureList").innerHTML="";
+  $("incompleteCount").textContent="0";$("failureCount").textContent="0";
+  $("buildMismatch").innerHTML="";
+  $("buildInfoCard").innerHTML="";
+  $("buildFingerprint").textContent="Not detected";
+  $("androidVersion").textContent="Not detected";
+  $("securityPatch").textContent="Not detected";
+  const issuesEl=document.querySelector(".issues-grid");
+  if(issuesEl) issuesEl.style.display="grid";
+  $("readiness").textContent="WAITING FOR REPORTS";$("readiness").className="readiness-chip";
+});
+$("analyzeBtn").addEventListener("click",async()=>{
+  const b=$("analyzeBtn");b.disabled=true;b.textContent="Analyzing reports…";
+  $("statusMessage").textContent="Uploading and parsing Tradefed result XML…";
+  const fd=new FormData();state.files.forEach(f=>fd.append("files",f));
+  try{
+    const r=await fetch("/api/analyze",{method:"POST",body:fd});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.error||"Analysis failed");
+    state.data=d;render();
+    const diagnostics=d.reportDiagnostics||[];
+    const xmlCount=Number(d.xmlReportsFound||0);
+    const recognized=Number(d.recognizedReports||0);
+    const buildCount=(d.builds||[]).length;
+    const diagnosticErrors=diagnostics.flatMap(x=>(x.errors||[]).map(err=>`${x.file}: ${err}`));
+    if(diagnosticErrors.length){
+      $("statusMessage").textContent=`Analysis found ${xmlCount} XML report(s), recognized ${recognized}. ${diagnosticErrors.join(" | ")}`;
+    }else{
+      $("statusMessage").textContent=`Analysis complete: ${xmlCount} XML report(s) • ${recognized} recognized • ${buildCount} build(s) • ${(d.suites||[]).length} suite(s).`;
+    }
+  }catch(e){
+    $("statusMessage").textContent=e.message;
+    $("readiness").textContent="ANALYSIS FAILED";
+    $("readiness").className="readiness-chip attention";
+  }finally{b.disabled=!state.files.length;b.textContent="Analyze Reports →"}
+});
+async function getDashboardUrl(dashboard=state.data){
+  if(!dashboard)throw new Error("Analyze reports first");
+  const r=await fetch("/api/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dashboard)});
+  if(!r.ok)throw new Error("Publish failed");
+  return URL.createObjectURL(await r.blob());
+}
+$("viewBtn").addEventListener("click",async()=>{
+  const b=$("viewBtn");b.disabled=true;b.textContent="Opening dashboard…";
+  try{
+    const url=await getDashboardUrl();
+    const win=window.open(url,"_blank");
+    if(!win)throw new Error("Popup blocked. Please allow popups for this site.");
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e){alert(e.message)}finally{b.disabled=false;b.textContent="View Dashboard ↗"}
+});
+
+async function loadHistory(){
+  try{
+    const r=await fetch("/api/history");
+    if(!r.ok)throw new Error("Unable to load analysis history");
+    const d=await r.json();
+    const runs=d.runs||[],limit=Number(d.maxRuns||20);
+    $("historyCount").textContent=`${runs.length} / ${limit}`;
+    if(!runs.length){
+      $("historyList").innerHTML="<div class='empty'>No successful analysis runs stored yet.</div>";
+      return;
+    }
+    $("historyList").innerHTML=runs.map((run,index)=>{
+      const date=run.analyzedAt?new Date(run.analyzedAt).toLocaleString("en-IN"):"Unknown";
+      const statusClass=run.status==="READY FOR REVIEW"?"ready":(run.status==="BUILD MISMATCH"?"mismatch":"attention");
+      return `<article class="history-row">
+        <div class="history-run"><strong>#${runs.length-index}</strong><span>${esc(date)}</span></div>
+        <div class="history-build"><span>BUILD</span><strong>${esc(run.buildFingerprint||"Not detected")}</strong></div>
+        <div class="history-metrics"><span>${format(run.suiteCount)} suites</span><span>${format(run.totalTests)} tests</span><span>${format(run.failed)} failed</span></div>
+        <span class="history-status ${statusClass}">${esc(run.status||"UNKNOWN")}</span>
+        <div class="history-actions">
+          <button class="secondary history-view" data-run-id="${esc(run.runId)}">View</button>
+          <button class="primary history-download" data-run-id="${esc(run.runId)}">Download</button>
+        </div>
+      </article>`;
+    }).join("");
+    document.querySelectorAll(".history-view").forEach(btn=>btn.addEventListener("click",()=>openHistoryRun(btn.dataset.runId,false)));
+    document.querySelectorAll(".history-download").forEach(btn=>btn.addEventListener("click",()=>openHistoryRun(btn.dataset.runId,true)));
+  }catch(e){
+    $("historyList").innerHTML=`<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+async function openHistoryRun(runId,download){
+  let win=null;
+  try{
+    // Open the tab synchronously from the button click so browser popup
+    // blockers do not reject the historical dashboard after the async fetch.
+    if(!download){
+      win=window.open("about:blank","_blank");
+      if(!win)throw new Error("Popup blocked. Please allow popups for this site.");
+      win.document.title="Preparing dashboard…";
+      win.document.body.innerHTML="<p style='font-family:Arial;padding:24px'>Preparing historical dashboard…</p>";
+    }
+
+    const r=await fetch("/api/history/"+encodeURIComponent(runId));
+    if(!r.ok)throw new Error("Historical run not found");
+    const dashboard=await r.json();
+    const url=await getDashboardUrl(dashboard);
+
+    if(download){
+      const a=document.createElement("a");
+      a.href=url;
+      a.download="gct-certification-dashboard-"+runId+".html";
+      a.style.display="none";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }else{
+      win.location.href=url;
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    }
+  }catch(e){
+    if(win && !win.closed) win.close();
+    alert(e.message);
+  }
+}
+$("publishBtn").addEventListener("click",async()=>{
+  const b=$("publishBtn");b.disabled=true;b.textContent="Preparing dashboard…";
+  try{
+    const url=await getDashboardUrl(),a=document.createElement("a");
+    a.href=url;a.download="gct-certification-dashboard.html";a.click();
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }catch(e){alert(e.message)}finally{b.disabled=false;b.textContent="Download Dashboard HTML ↓"}
+});
+renderFiles();
+loadHistory();
