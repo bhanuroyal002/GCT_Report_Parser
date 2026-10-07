@@ -3,153 +3,136 @@ package com.gct.parser;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 @Service
 public class AnalysisHistoryService {
     private static final int MAX_RUNS = 20;
-    private final ObjectMapper objectMapper;
-    private final Path historyFile = Path.of("data", "analysis-history.json");
 
-    public AnalysisHistoryService(ObjectMapper objectMapper) {
+    private final AnalysisHistoryRepository repository;
+    private final ObjectMapper objectMapper;
+
+    public AnalysisHistoryService(AnalysisHistoryRepository repository, ObjectMapper objectMapper) {
+        this.repository = repository;
         this.objectMapper = objectMapper;
     }
 
-    public synchronized Map<String, Object> save(Map<String, Object> dashboard) {
-        List<Map<String, Object>> runs = readRuns();
+    @Transactional
+    public Map<String, Object> save(Map<String, Object> dashboard) {
+        try {
+            Map<String, Object> overall = map(dashboard.get("overall"));
+            List<Map<String, Object>> suites = maps(dashboard.get("suites"));
+            List<Map<String, Object>> incomplete = maps(dashboard.get("incompleteModules"));
 
-        Map<String, Object> run = new LinkedHashMap<>();
-        run.put("runId", createRunId());
-        run.put("analyzedAt", dashboard.getOrDefault("generatedAt", Instant.now().toString()));
-        run.put("dashboard", new LinkedHashMap<>(dashboard));
+            int failed = number(overall.get("failed"));
+            boolean mismatch = Boolean.TRUE.equals(overall.get("fingerprintMismatch"));
+            String status = mismatch ? "BUILD MISMATCH"
+                    : (failed == 0 && incomplete.isEmpty() ? "READY FOR REVIEW" : "ATTENTION REQUIRED");
 
-        runs.add(0, run);
-        while (runs.size() > MAX_RUNS) {
-            runs.remove(runs.size() - 1);
+            AnalysisHistoryEntity entity = new AnalysisHistoryEntity();
+            entity.setRunId(createRunId());
+            entity.setAnalyzedAt(parseInstant(dashboard.get("generatedAt")));
+            entity.setStatus(status);
+            entity.setBuildFingerprint(text(dashboard.get("buildFingerprint")));
+            entity.setAndroidVersion(text(dashboard.get("androidVersion")));
+            entity.setSecurityPatch(text(dashboard.get("securityPatch")));
+            entity.setSuiteCount(suites.size());
+            entity.setTotalTests(number(overall.get("totalTests")));
+            entity.setPassed(number(overall.get("passed")));
+            entity.setFailed(failed);
+            entity.setDashboardJson(objectMapper.writeValueAsString(dashboard));
+
+            repository.save(entity);
+
+            // Keep exactly the newest 20 successful analysis records.
+            List<AnalysisHistoryEntity> all = repository.findAll(
+                    org.springframework.data.domain.Sort.by(
+                            org.springframework.data.domain.Sort.Direction.DESC, "analyzedAt"));
+            if (all.size() > MAX_RUNS) {
+                repository.deleteAll(all.subList(MAX_RUNS, all.size()));
+            }
+
+            return dashboard;
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to save analysis history.", e);
         }
-
-        writeRuns(runs);
-        return run;
     }
 
-    public synchronized List<Map<String, Object>> summaries() {
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> summaries() {
         List<Map<String, Object>> result = new ArrayList<>();
-        for (Map<String, Object> run : readRuns()) {
-            result.add(toSummary(run));
+        for (AnalysisHistoryEntity entity : repository.findTop20ByOrderByAnalyzedAtDesc()) {
+            Map<String, Object> summary = new LinkedHashMap<>();
+            summary.put("runId", entity.getRunId());
+            summary.put("analyzedAt", entity.getAnalyzedAt().toString());
+            summary.put("status", entity.getStatus());
+            summary.put("buildFingerprint", entity.getBuildFingerprint());
+            summary.put("androidVersion", entity.getAndroidVersion());
+            summary.put("securityPatch", entity.getSecurityPatch());
+            summary.put("suiteCount", entity.getSuiteCount());
+            summary.put("totalTests", entity.getTotalTests());
+            summary.put("passed", entity.getPassed());
+            summary.put("failed", entity.getFailed());
+            summary.put("runLimit", MAX_RUNS);
+            result.add(summary);
         }
         return result;
     }
 
-    public synchronized Optional<Map<String, Object>> find(String runId) {
-        return readRuns().stream()
-                .filter(run -> runId.equals(String.valueOf(run.get("runId"))))
-                .map(run -> (Map<String, Object>) run.get("dashboard"))
-                .filter(Objects::nonNull)
-                .findFirst();
+    @Transactional(readOnly = true)
+    public Optional<Map<String, Object>> find(String runId) {
+        return repository.findByRunId(runId).flatMap(entity -> {
+            try {
+                return Optional.of(objectMapper.readValue(
+                        entity.getDashboardJson(),
+                        new TypeReference<LinkedHashMap<String, Object>>() {}));
+            } catch (Exception e) {
+                return Optional.empty();
+            }
+        });
     }
 
     public int maxRuns() {
         return MAX_RUNS;
     }
 
-    private List<Map<String, Object>> readRuns() {
-        if (!Files.exists(historyFile)) {
-            return new ArrayList<>();
-        }
-
+    private static Instant parseInstant(Object value) {
         try {
-            String json = Files.readString(historyFile);
-            if (json.isBlank()) {
-                return new ArrayList<>();
-            }
-
-            Map<String, Object> root = objectMapper.readValue(
-                    json, new TypeReference<Map<String, Object>>() {});
-            Object value = root.get("runs");
-
-            if (!(value instanceof List<?> list)) {
-                return new ArrayList<>();
-            }
-
-            List<Map<String, Object>> runs = new ArrayList<>();
-            for (Object item : list) {
-                if (item instanceof Map<?, ?> map) {
-                    Map<String, Object> normalized = new LinkedHashMap<>();
-                    map.forEach((key, val) -> normalized.put(String.valueOf(key), val));
-                    runs.add(normalized);
-                }
-            }
-            return runs;
+            return Instant.parse(text(value));
         } catch (Exception e) {
-            return new ArrayList<>();
+            return Instant.now();
         }
     }
 
-    private void writeRuns(List<Map<String, Object>> runs) {
-        try {
-            Files.createDirectories(historyFile.getParent());
-
-            Map<String, Object> root = new LinkedHashMap<>();
-            root.put("runs", runs);
-
-            Path tempFile = historyFile.resolveSibling("analysis-history.json.tmp");
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(tempFile.toFile(), root);
-            Files.move(tempFile, historyFile,
-                    StandardCopyOption.REPLACE_EXISTING,
-                    StandardCopyOption.ATOMIC_MOVE);
-        } catch (IOException atomicMoveFailure) {
-            try {
-                Map<String, Object> root = new LinkedHashMap<>();
-                root.put("runs", runs);
-                objectMapper.writerWithDefaultPrettyPrinter().writeValue(historyFile.toFile(), root);
-            } catch (IOException e) {
-                throw new IllegalStateException("Unable to save analysis history.", e);
-            }
-        }
+    private static String createRunId() {
+        String timestamp = LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        return timestamp + "-" + UUID.randomUUID().toString().substring(0, 6);
     }
 
     @SuppressWarnings("unchecked")
-    private Map<String, Object> toSummary(Map<String, Object> run) {
-        Map<String, Object> dashboard = run.get("dashboard") instanceof Map<?, ?> map
-                ? (Map<String, Object>) map
-                : Map.of();
+    private static List<Map<String, Object>> maps(Object value) {
+        if (!(value instanceof List<?> list)) return List.of();
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                result.add((Map<String, Object>) map);
+            }
+        }
+        return result;
+    }
 
-        Map<String, Object> overall = dashboard.get("overall") instanceof Map<?, ?> map
-                ? (Map<String, Object>) map
-                : Map.of();
-
-        List<Map<String, Object>> suites = dashboard.get("suites") instanceof List<?> list
-                ? (List<Map<String, Object>>) (List<?>) list
-                : List.of();
-
-        List<Map<String, Object>> incomplete = dashboard.get("incompleteModules") instanceof List<?> list
-                ? (List<Map<String, Object>>) (List<?>) list
-                : List.of();
-
-        int failed = number(overall.get("failed"));
-        boolean mismatch = Boolean.TRUE.equals(overall.get("fingerprintMismatch"));
-        String status = mismatch ? "BUILD MISMATCH"
-                : (failed == 0 && incomplete.isEmpty() ? "READY FOR REVIEW" : "ATTENTION REQUIRED");
-
-        Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("runId", run.get("runId"));
-        summary.put("analyzedAt", run.get("analyzedAt"));
-        summary.put("status", status);
-        summary.put("buildFingerprint", dashboard.getOrDefault("buildFingerprint", "Not detected"));
-        summary.put("androidVersion", dashboard.getOrDefault("androidVersion", "Not detected"));
-        summary.put("securityPatch", dashboard.getOrDefault("securityPatch", "Not detected"));
-        summary.put("suiteCount", suites.size());
-        summary.put("totalTests", number(overall.get("totalTests")));
-        summary.put("passed", number(overall.get("passed")));
-        summary.put("failed", failed);
-        summary.put("runLimit", MAX_RUNS);
-        return summary;
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> map(Object value) {
+        if (value instanceof Map<?, ?> source) {
+            return (Map<String, Object>) source;
+        }
+        return Map.of();
     }
 
     private static int number(Object value) {
@@ -161,9 +144,7 @@ public class AnalysisHistoryService {
         }
     }
 
-    private static String createRunId() {
-        String timestamp = java.time.LocalDateTime.now()
-                .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
-        return timestamp + "-" + UUID.randomUUID().toString().substring(0, 6);
+    private static String text(Object value) {
+        return value == null ? "" : String.valueOf(value);
     }
 }
