@@ -75,6 +75,8 @@ Clone the repository on an always-on Ubuntu/Linux or Windows server:
 ```bash
 git clone https://github.com/bhanuroyal002/GCT_Report_Parser.git
 cd GCT_Report_Parser
+cp .env.example .env
+# Edit .env and set a strong GCT_DB_PASSWORD
 ```
 
 Build and start both containers:
