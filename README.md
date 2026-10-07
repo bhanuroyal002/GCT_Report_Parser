@@ -141,16 +141,6 @@ http://127.0.0.1:8080
 
 Select one or more ZIP files.
 
-Supported certification/report types include:
-
-- CTS
-- GTS
-- TVTS
-- STS
-- VTS
-- CTS-on-GSI
-- CTS Verifier
-
 The ZIP filename does not determine the suite. The parser reads the Tradefed XML.
 
 ### Step 3 — Analyze
