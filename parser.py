@@ -355,8 +355,6 @@ def merge_reports(reports):
     if not reports:
         return {}
 
-    if len(reports) == 1:
-        return reports[0].copy()
 
     test_results = OrderedDict()
     module_info = OrderedDict()
