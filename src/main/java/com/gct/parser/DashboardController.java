@@ -191,6 +191,23 @@ public class DashboardController {
         return ResponseEntity.ok(out);
     }
 
+    private static String safeError(Exception e) {
+        String message = e.getMessage();
+        return message == null || message.isBlank() ? e.getClass().getSimpleName() : message;
+    }
+
+    private static final class ParseResult {
+        final List<ParsedReport> reports;
+        final int xmlFilesFound;
+        final List<String> errors;
+
+        ParseResult(List<ParsedReport> reports, int xmlFilesFound, List<String> errors) {
+            this.reports = reports;
+            this.xmlFilesFound = xmlFilesFound;
+            this.errors = errors;
+        }
+    }
+
     private static String normalizeFingerprint(String fingerprint) {
         String value = firstNonBlank(fingerprint, "");
         return value.trim().toLowerCase(Locale.ROOT);
@@ -231,37 +248,32 @@ public class DashboardController {
      * are kept independently so they can later be compared and merged using
      * testcase/module identity.
      */
-    private List<ParsedReport> parse(MultipartFile file) {
+    private ParseResult parse(MultipartFile file) {
         List<ReportData> candidates = new ArrayList<>();
         Set<String> seenXml = new HashSet<>();
+        List<String> errors = new ArrayList<>();
+        int[] xmlFilesFound = {0};
 
         try {
-            collectReportsFromZip(file.getBytes(), candidates, seenXml, 0);
-        } catch (Exception ignored) {
-            // Keep any reports already collected from valid ZIP entries.
+            collectReportsFromZip(file.getBytes(), candidates, seenXml, 0, errors, xmlFilesFound);
+        } catch (Exception e) {
+            errors.add("Archive error: " + safeError(e));
         }
 
-        if (candidates.isEmpty()) {
-            return List.of();
-        }
-
-        // First convert each unique XML into an independent report.
         List<ParsedReport> parsedReports = new ArrayList<>();
         for (ReportData candidate : candidates) {
             ParsedReport report = candidate.toParsedReport();
             if (report.suite != null) {
                 parsedReports.add(report);
+            } else {
+                errors.add("Found test_result.xml but suite name/plan was not detected.");
             }
         }
 
-        // Merge only reports that belong to the same logical suite/build group.
-        // Different reports remain separate until this grouping decision is made.
         Map<String, List<ParsedReport>> groups = new LinkedHashMap<>();
         for (ParsedReport report : parsedReports) {
-            String suiteKey = firstNonBlank(report.suite, "unknown")
-                    .toLowerCase(Locale.ROOT);
-            String fingerprintKey = firstNonBlank(report.fingerprint, "Not detected")
-                    .toLowerCase(Locale.ROOT);
+            String suiteKey = firstNonBlank(report.suite, "unknown").toLowerCase(Locale.ROOT);
+            String fingerprintKey = firstNonBlank(report.fingerprint, "Not detected").toLowerCase(Locale.ROOT);
             String key = suiteKey + "||" + fingerprintKey;
             groups.computeIfAbsent(key, k -> new ArrayList<>()).add(report);
         }
@@ -271,7 +283,7 @@ public class DashboardController {
             mergedReports.add(mergeReports(group));
         }
 
-        return mergedReports;
+        return new ParseResult(mergedReports, xmlFilesFound[0], errors);
     }
 
     /**
@@ -285,7 +297,7 @@ public class DashboardController {
      */
     private void collectReportsFromZip(byte[] zipBytes,
                                        List<ReportData> candidates, Set<String> seenXml,
-                                       int depth) throws Exception {
+                                       int depth, List<String> errors, int[] xmlFilesFound) throws Exception {
         if (depth > 20) {
             return;
         }
@@ -302,6 +314,7 @@ public class DashboardController {
 
                 // Check for a result XML at this ZIP level.
                 if (name.endsWith("test_result.xml")) {
+                    xmlFilesFound[0]++;
                     String hash = Base64.getEncoder().encodeToString(
                             java.security.MessageDigest.getInstance("SHA-256").digest(entryBytes));
 
@@ -316,7 +329,7 @@ public class DashboardController {
                             candidates.add(candidate);
                         }
                     } catch (Exception ignoredEntry) {
-                        // Ignore only this invalid XML and continue scanning.
+                        errors.add("XML parse error in " + entry.getName() + ": " + safeError(ignoredEntry));
                     }
                 }
 
@@ -325,9 +338,9 @@ public class DashboardController {
                 // all of its entries, including both XMLs and nested archives.
                 if (name.endsWith(".zip")) {
                     try {
-                        collectReportsFromZip(entryBytes, candidates, seenXml, depth + 1);
+                        collectReportsFromZip(entryBytes, candidates, seenXml, depth + 1, errors, xmlFilesFound);
                     } catch (Exception ignoredNestedZip) {
-                        // Ignore only this invalid/unreadable nested ZIP.
+                        errors.add("Nested ZIP error in " + entry.getName() + ": " + safeError(ignoredNestedZip));
                     }
                 }
             }
