@@ -22,7 +22,7 @@ def parse_xml(data,source):
     if root.tag.rsplit("}",1)[-1]!="Result": return None
     s=suite(root.get("suite_name"),root.get("suite_plan"))
     if not s:return None
-    sm=root.find("Summary") or ET.Element("Summary"); b=root.find("Build") or ET.Element("Build")
+    sm=root.find("Summary")\n    b=root.find("Build")\n    if sm is None: sm=ET.Element("Summary")\n    if b is None: b=ET.Element("Build")
     r={"suite":s,"plan":first(root.get("suite_plan"),s),"version":first(root.get("suite_version"),root.get("version")),
        "buildNumber":first(root.get("suite_build_number"),root.get("build_number")),
        "fingerprint":first(b.get("build_fingerprint"),"Not detected"),"securityPatch":first(b.get("build_version_security_patch"),"Not detected"),
