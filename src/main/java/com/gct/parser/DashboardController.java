@@ -999,7 +999,14 @@ public class DashboardController {
     private static String normalizeSuiteName(String suiteName, String suitePlan) {
         String normalizedPlan = suitePlan == null ? null : suitePlan.trim();
         if (normalizedPlan != null && !normalizedPlan.isBlank()) {
-            return normalizedPlan.toUpperCase(Locale.ROOT);
+            String plan = normalizedPlan.toUpperCase(Locale.ROOT)
+                    .replace('_', '-')
+                    .replace(' ', '-');
+            if ("VERIFIER".equals(plan) || "CTS-VERIFIER".equals(plan)
+                    || "CTSVERIFIER".equals(plan)) {
+                return "CTS-Verifier";
+            }
+            return plan;
         }
 
         String normalizedSuite = suiteName == null ? null : suiteName.trim();
