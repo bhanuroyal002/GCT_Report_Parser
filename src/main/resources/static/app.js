@@ -106,7 +106,16 @@ $("analyzeBtn").addEventListener("click",async()=>{
     const d=await r.json();
     if(!r.ok)throw new Error(d.error||"Analysis failed");
     state.data=d;render();
-    $("statusMessage").textContent=`Analysis complete: ${(d.suites||[]).length} recognized suite(s).`;
+    const diagnostics=d.reportDiagnostics||[];
+    const xmlCount=Number(d.xmlReportsFound||0);
+    const recognized=Number(d.recognizedReports||0);
+    const buildCount=(d.builds||[]).length;
+    const diagnosticErrors=diagnostics.flatMap(x=>(x.errors||[]).map(err=>`${x.file}: ${err}`));
+    if(diagnosticErrors.length){
+      $("statusMessage").textContent=`Analysis found ${xmlCount} XML report(s), recognized ${recognized}. ${diagnosticErrors.join(" | ")}`;
+    }else{
+      $("statusMessage").textContent=`Analysis complete: ${xmlCount} XML report(s) • ${recognized} recognized • ${buildCount} build(s) • ${(d.suites||[]).length} suite(s).`;
+    }
   }catch(e){
     $("statusMessage").textContent=e.message;
     $("readiness").textContent="ANALYSIS FAILED";
