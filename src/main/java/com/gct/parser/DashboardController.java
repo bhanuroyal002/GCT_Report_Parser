@@ -28,9 +28,18 @@ public class DashboardController {
         }
 
         List<ParsedReport> allReports = new ArrayList<>();
+        List<Map<String, Object>> reportDiagnostics = new ArrayList<>();
 
         for (MultipartFile file : files) {
-            allReports.addAll(parse(file));
+            ParseResult result = parse(file);
+            allReports.addAll(result.reports);
+
+            Map<String, Object> diagnostic = new LinkedHashMap<>();
+            diagnostic.put("file", file.getOriginalFilename());
+            diagnostic.put("xmlFilesFound", result.xmlFilesFound);
+            diagnostic.put("recognizedReports", result.reports.size());
+            diagnostic.put("errors", result.errors);
+            reportDiagnostics.add(diagnostic);
         }
 
         // Build identity is determined ONLY by the normalized build fingerprint.
@@ -169,6 +178,11 @@ public class DashboardController {
                 ? "Not detected"
                 : textValue(builds.get(0).get("androidVersion")));
         out.put("fingerprints", new ArrayList<>(knownFingerprints));
+        out.put("reportDiagnostics", reportDiagnostics);
+        out.put("uploadedFiles", files.length);
+        out.put("xmlReportsFound", reportDiagnostics.stream()
+                .mapToInt(d -> number(d.get("xmlFilesFound"))).sum());
+        out.put("recognizedReports", allReports.size());
         out.put("overall", overall);
         out.put("suites", suites);
         out.put("incompleteModules", fingerprintMismatch ? List.of() : incomplete);
