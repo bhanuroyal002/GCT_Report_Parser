@@ -19,6 +19,9 @@ class DashboardControllerTest {
     @Autowired
     DashboardController controller;
 
+    @Autowired
+    AnalysisHistoryRepository historyRepository;
+
     @Test
     void dashboardStartsEmptyUntilReportsAreAnalyzed() {
         var dashboard = controller.dashboard();
@@ -36,6 +39,41 @@ class DashboardControllerTest {
         assertThat((List<?>) dashboard.get("suites")).isEmpty();
         assertThat((List<?>) dashboard.get("incompleteModules")).isEmpty();
         assertThat((List<?>) dashboard.get("failures")).isEmpty();
+    }
+
+
+    @Test
+    void storesSuccessfulAnalysisInSharedHistory() {
+        String xml = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <Result suite_name="CTS" suite_plan="cts"
+                        start_display="Wed Oct 07 11:00:00 IST 2026">
+                  <Summary pass="1" failed="0" modules_done="1" modules_total="1"/>
+                  <Build build_fingerprint="test/device:16/BUILD/456:user/release-keys"
+                         build_version_security_patch="2026-08-01"
+                         build_version_release="16" build_version_sdk="36"
+                         build_abis="arm64-v8a"/>
+                  <Module name="HistoryModule" abi="arm64-v8a" done="true" pass="1">
+                    <TestCase name="HistoryTest">
+                      <Test name="testHistory" result="pass"/>
+                    </TestCase>
+                  </Module>
+                </Result>
+                """;
+
+        MockMultipartFile zip = new MockMultipartFile(
+                "files", "CTS.zip", "application/zip", createZip(xml)
+        );
+
+        Map<String, Object> body = controller.analyze(new MockMultipartFile[]{zip}).getBody();
+        assertThat(body).isNotNull();
+
+        Map<String, Object> history = controller.history();
+        assertThat((List<?>) history.get("runs")).isNotEmpty();
+
+        String runId = String.valueOf(((Map<?, ?>) ((List<?>) history.get("runs")).get(0)).get("runId"));
+        assertThat(controller.historyRun(runId).getStatusCode().is2xxSuccessful()).isTrue();
+        assertThat(historyRepository.count()).isGreaterThan(0);
     }
 
     @Test
