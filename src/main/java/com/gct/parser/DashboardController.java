@@ -114,6 +114,10 @@ public class DashboardController {
                 item.put("fingerprint", fp);
                 item.put("securityPatch", "Not detected");
                 item.put("androidVersion", "Not detected");
+                item.put("buildId", "Not detected");
+                item.put("buildType", "Not detected");
+                item.put("sdk", "Not detected");
+                item.put("abis", "Not detected");
                 item.put("suites", new LinkedHashSet<String>());
                 return item;
             });
@@ -126,6 +130,15 @@ public class DashboardController {
             if (!suiteRelease.isBlank() && !"Not detected".equalsIgnoreCase(suiteRelease)) {
                 build.put("androidVersion", suiteRelease);
             }
+
+            String suiteBuildId = textValue(suite.get("buildId"));
+            String suiteBuildType = textValue(suite.get("buildType"));
+            String suiteSdk = textValue(suite.get("sdk"));
+            String suiteAbis = textValue(suite.get("abis"));
+            if (!suiteBuildId.isBlank() && !"Not detected".equalsIgnoreCase(suiteBuildId)) build.put("buildId", suiteBuildId);
+            if (!suiteBuildType.isBlank() && !"Not detected".equalsIgnoreCase(suiteBuildType)) build.put("buildType", suiteBuildType);
+            if (!suiteSdk.isBlank() && !"Not detected".equalsIgnoreCase(suiteSdk)) build.put("sdk", suiteSdk);
+            if (!suiteAbis.isBlank() && !"Not detected".equalsIgnoreCase(suiteAbis)) build.put("abis", suiteAbis);
 
             @SuppressWarnings("unchecked")
             Set<String> buildSuites = (Set<String>) build.get("suites");
@@ -329,6 +342,8 @@ public class DashboardController {
         String release = null;
         String sdk = null;
         String abis = null;
+        String buildId = null;
+        String buildType = null;
 
         int passed = 0;
         int failed = 0;
@@ -416,6 +431,9 @@ public class DashboardController {
                         release = streamAttr(reader, "build_version_release");
                         sdk = streamAttr(reader, "build_version_sdk");
                         abis = streamAttr(reader, "build_abis");
+                        buildId = firstNonBlank(streamAttr(reader, "build_id"),
+                                streamAttr(reader, "build_version_incremental"));
+                        buildType = streamAttr(reader, "build_type");
                         continue;
                     }
 
@@ -625,6 +643,8 @@ public class DashboardController {
         data.release = release;
         data.sdk = sdk;
         data.abis = abis;
+        data.buildId = buildId;
+        data.buildType = buildType;
         data.testCases = testCases;
         data.status = status;
         data.moduleDetails = modules;
@@ -696,6 +716,8 @@ public class DashboardController {
             release = firstNonBlank(release, report.release);
             sdk = firstNonBlank(sdk, report.sdk);
             abis = firstNonBlank(abis, report.abis);
+            buildId = firstNonBlank(buildId, report.buildId);
+            buildType = firstNonBlank(buildType, report.buildType);
 
             moduleDoneStates.putAll(report.moduleDoneStates);
 
@@ -836,6 +858,8 @@ public class DashboardController {
         merged.release = release;
         merged.sdk = sdk;
         merged.abis = abis;
+        merged.buildId = buildId;
+        merged.buildType = buildType;
         merged.moduleDetails = modules;
         merged.failures.addAll(failures);
         merged.incompleteModules.addAll(incomplete);
@@ -991,6 +1015,8 @@ public class DashboardController {
         String release;
         String sdk;
         String abis;
+        String buildId;
+        String buildType;
         String status;
         List<Map<String, Object>> moduleDetails = List.of();
         List<Map<String, Object>> failures = List.of();
@@ -1016,6 +1042,8 @@ public class DashboardController {
             parsed.release = release;
             parsed.sdk = sdk;
             parsed.abis = abis;
+            parsed.buildId = buildId;
+            parsed.buildType = buildType;
             parsed.moduleDetails = moduleDetails;
             parsed.failures.addAll(failures);
             parsed.incompleteModules.addAll(incomplete);
@@ -1118,6 +1146,8 @@ public class DashboardController {
             map.put("release", release);
             map.put("sdk", sdk);
             map.put("abis", abis);
+            map.put("buildId", buildId);
+            map.put("buildType", buildType);
             map.put("moduleDetails", moduleDetails);
             return map;
         }
