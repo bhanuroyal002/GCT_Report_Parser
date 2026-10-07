@@ -48,8 +48,9 @@ public class AnalysisHistoryService {
 
     public synchronized Optional<Map<String, Object>> find(String runId) {
         return readRuns().stream()
-                .filter(runId::equals)
+                .filter(run -> runId.equals(String.valueOf(run.get("runId"))))
                 .map(run -> (Map<String, Object>) run.get("dashboard"))
+                .filter(Objects::nonNull)
                 .findFirst();
     }
 
