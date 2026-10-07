@@ -198,3 +198,4 @@ $("publishBtn").addEventListener("click",async()=>{
   }catch(e){alert(e.message)}finally{b.disabled=false;b.textContent="Download Dashboard HTML ↓"}
 });
 renderFiles();
+loadHistory();
