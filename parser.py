@@ -356,6 +356,37 @@ def merge_reports(reports):
         return {}
 
 
+    if len(reports) == 1:
+        report = reports[0]
+        return {
+            "name": report["suite"],
+            "plan": report["plan"],
+            "version": report["version"],
+            "buildNumber": report["buildNumber"],
+            "hostInfo": report["hostInfo"],
+            "start": report["start"],
+            "end": report["end"],
+            "passed": report["passed"],
+            "failed": report["failed"],
+            "assumptionFailures": report["assumptionFailures"],
+            "ignored": report["ignored"],
+            "warnings": report["warnings"],
+            "modules": report["modulesTotal"],
+            "completedModules": report["modulesDone"],
+            "testCases": report["testCases"],
+            "status": report["status"],
+            "fingerprint": report["fingerprint"],
+            "securityPatch": report["securityPatch"],
+            "release": report["release"],
+            "sdk": report["sdk"],
+            "abis": report["abis"],
+            "buildId": report["buildId"],
+            "buildType": report["buildType"],
+            "moduleDetails": report["moduleDetails"],
+            "_failures": report["failures"],
+            "_incomplete": report["incomplete"],
+        }
+
     test_results = OrderedDict()
     module_info = OrderedDict()
 
