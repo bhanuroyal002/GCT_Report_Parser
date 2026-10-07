@@ -73,7 +73,6 @@ function render(){
 
   $("suiteGrid").innerHTML=s.map(x=>{
     const p=x.modules?Math.round(x.completedModules/x.modules*100):0;
-    const icon=suiteIcon(x.name);
     return `<article class="suite"><div class="suite-top"><div class="suite-title"><span class="suite-icon">${icon}</span><h3>${esc(x.name)}</h3></div><span class="pill ${x.status==="COMPLETED"?"ok":"warn"}">${esc(x.status)}</span></div><div class="suite-number">${format(x.completedModules)} / ${format(x.modules)} modules</div><div class="progress"><i style="width:${p}%"></i></div><div class="suite-meta"><span>${p}% complete</span><span>${format(x.testCases)} total tests</span></div><div class="suite-fails"><span class="good">${format(x.passed)} passed</span> · <span class="bad">${format(x.failed)} failed</span> · ${format(x.assumptionFailures)} assumption failure · ${format(x.ignored)} ignored</div></article>`;
   }).join("");
 
