@@ -43,7 +43,7 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
 .table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th{background:#eef1f4;text-align:left;font-size:11px;text-transform:uppercase;color:#56616c;padding:11px}td{padding:11px;border-bottom:1px solid var(--line)}tbody tr:hover{background:#fafbfc}
 .pass-text{color:var(--green);font-weight:800}.fail-text{color:var(--red);font-weight:800}.inc-text{color:var(--red);font-weight:800}
 .issue{padding:10px 0;border-bottom:1px solid var(--line)}.issue:last-child{border-bottom:0}.issue strong{display:block}.issue span{display:block;color:var(--muted);margin-top:4px;font-size:12px}
-.empty{color:var(--green);background:var(--greenbg);padding:12px;border-radius:4px}.footer{text-align:center;color:var(--muted);font-size:11px;margin-top:18px}
+.empty{color:var(--green);background:var(--greenbg);padding:12px;border-radius:4px}.footer{text-align:center;color:var(--muted);font-size:11px;line-height:1.7;margin-top:24px;padding-top:6px}.footer div+div{margin-top:4px}
 @media(max-width:700px){.header{display:block}.status{display:inline-block;margin-top:15px}.summary{grid-template-columns:1fr}.wrap{padding:15px 10px}}
 @media print{body{background:#fff}.wrap{max-width:none;padding:0}.section,.header{break-inside:avoid}}
 </style></head><body><div class="wrap">
@@ -138,8 +138,9 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
         }
         h.append("</section>");
 
-        h.append("undefined").append(e(generated))
-                .append(" · GCT Report Parser · Certification Intelligence<br>© 2026 CERT_Team · Internal Certification Tool</div></div></body></html>");
+        h.append("<div class='footer'><div>Generated ").append(e(generated))
+                .append(" · GCT Report Parser · Certification Intelligence</div>")
+                .append("<div>© 2026 CERT_Team · Internal Certification Tool</div></div></div></body></html>");
         return h.toString();
     }
 
