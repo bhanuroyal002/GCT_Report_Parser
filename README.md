@@ -19,7 +19,6 @@ The tool is intended for Android automation and certification workflows where mu
 - Lists final failed test cases and failure details.
 - Provides a stakeholder-facing dashboard that can be viewed or downloaded as standalone HTML.
 - Stores the latest **20 successful analysis runs** in PostgreSQL and lets users view/download historical dashboards.
-- Provides a Docker Compose deployment with PostgreSQL so the team can use the application without installing Java/Maven locally.
 - Uses a streaming StAX XML parser to handle large Tradefed result files without loading the entire XML document into memory.
 
 ## Supported reports
@@ -32,183 +31,101 @@ The tool automatically analyzes the available report data and generates a consol
 
 ## Requirements
 
-### Required
+### Required runtime
 
 | Requirement | Version / Details |
 |---|---|
 | Java | **17 or later** |
-| Maven | **3.9 or later recommended** for source builds |
-| PostgreSQL | **16+** for non-Docker local runs |
-| Docker | **Docker Engine + Docker Compose** for recommended team deployment |
+| PostgreSQL | **16+** |
 | Git | Required to clone/update the repository |
 | Browser | Modern Chrome, Edge or Firefox |
 | RAM | **8 GB minimum recommended**; 16 GB+ preferred for large reports |
-| Disk space | Sufficient space for uploaded ZIPs, extracted/processed reports and Maven dependencies |
+| Disk space | Sufficient space for uploaded ZIPs and processed reports |
 
-Node.js, Python and Android SDK are not required. PostgreSQL is used for shared analysis history. The recommended team deployment runs both the application and PostgreSQL in Docker, so team members do not need Java, Maven or PostgreSQL installed.
+### Build/development only
 
-### Recommended environment
+| Requirement | Version / Details |
+|---|---|
+| Maven | **3.9+** |
 
-The application can run on:
+Maven is required only when building or testing the source code. **End users do not need Maven installed** when they receive a built application artifact.
 
-- Ubuntu/Linux
-- WSL2
-- Windows/macOS/Linux with Java and Maven installed
+Node.js, Python and Android SDK are not required.
 
-## Recommended team deployment
+PostgreSQL is used for shared analysis history.
 
-For shared team usage, run the application and PostgreSQL with Docker Compose.
+## Clean server installation
 
-### Requirements on the server
+This application can run directly on Linux, Windows or macOS with Java and PostgreSQL installed. Docker is **not required**.
 
-Only Docker is required:
+### 1. Install Java
 
-```bash
-docker --version
-docker compose version
-```
-
-### Start the team server
-
-Clone the repository on an always-on Ubuntu/Linux or Windows server:
-
-```bash
-git clone https://github.com/bhanuroyal002/GCT_Report_Parser.git
-cd GCT_Report_Parser
-cp .env.example .env
-# Edit .env and set a strong GCT_DB_PASSWORD
-```
-
-Build and start both containers:
-
-```bash
-docker compose up -d --build
-```
-
-Check the containers:
-
-```bash
-docker compose ps
-```
-
-Open from the server itself:
-
-```text
-http://localhost:8080
-```
-
-From other machines on the same network, use the server's IP address:
-
-```text
-http://<server-ip>:8080
-```
-
-The deployment contains:
-
-```text
-gct-report-parser
-        |
-        +---- PostgreSQL 16
-                  |
-                  +---- gct-postgres-data volume
-```
-
-The PostgreSQL volume keeps the shared analysis history when the containers are restarted or recreated.
-
-### Stop the server
-
-```bash
-docker compose down
-```
-
-This stops the containers but keeps the PostgreSQL volume.
-
-### Start again
-
-```bash
-docker compose up -d
-```
-
-### Important: do not use `docker compose down -v`
-
-The `-v` option deletes the PostgreSQL volume and therefore deletes the stored analysis history.
-
-### Shared 20-run history
-
-Every successful analysis is stored in PostgreSQL. The application keeps only the newest 20 successful runs.
-
-Each run contains the complete parsed dashboard data, so users can:
-
-- View a previous dashboard.
-- Download a previous dashboard as standalone HTML.
-- Continue using the current analysis independently.
-
-A failed HTTP request or analysis that produces no recognized Tradefed report is not stored as a successful history run.
-
-### Database persistence
-
-The PostgreSQL data is stored in the Docker named volume:
-
-```text
-gct-postgres-data
-```
-
-The application does not store uploaded ZIP files permanently. The ZIPs are processed for the current analysis and are not inserted into the database.
-
-### Production note
-
-For an internal company deployment, expose port 8080 only inside the company network or place the application behind the company's reverse proxy/HTTPS endpoint. The default Docker Compose credentials are intended for an internal demo/deployment and should be changed before a wider production rollout.
-## Installation
-
-### 1. Clone the repository
-
-```bash
-git clone https://github.com/bhanuroyal002/GCT_Report_Parser.git
-cd GCT_Report_Parser
-```
-
-If the repository is already cloned:
-
-```bash
-git pull
-```
-
-### 2. Verify Java
+Verify:
 
 ```bash
 java -version
 ```
 
-Java 17 or newer is required.
+Java 17 or later is required.
 
-### 3. Verify Maven
+### 2. Install PostgreSQL
 
-```bash
-mvn -version
+Install PostgreSQL 16 or later and create a database, user and password for the application.
+
+Example:
+
+```sql
+CREATE USER gct_parser WITH PASSWORD 'replace-with-a-strong-password';
+CREATE DATABASE gct_parser OWNER gct_parser;
 ```
 
-Maven 3.9+ is recommended.
+Do not use these example credentials in a real environment.
+
+### 3. Clone the repository
+
+```bash
+git clone https://github.com/bhanuroyal002/GCT_Report_Parser.git
+cd GCT_Report_Parser
+```
 
 ### 4. Build the application
+
+On a development/build machine with Maven:
 
 ```bash
 mvn clean package
 ```
 
-This compiles the application and runs the automated tests.
+The generated application artifact is:
 
-For a faster local build when tests are not required:
-
-```bash
-mvn clean package -DskipTests
+```text
+target/gct-report-parser.jar
 ```
 
-## Start the application
+### 5. Configure database access
 
-Run:
+Set the PostgreSQL connection through environment variables:
 
 ```bash
-mvn spring-boot:run
+export SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/gct_parser
+export SPRING_DATASOURCE_USERNAME=gct_parser
+export SPRING_DATASOURCE_PASSWORD='your-strong-password'
+```
+
+You can also set:
+
+```bash
+export MAX_FILE_SIZE=500MB
+export MAX_REQUEST_SIZE=1GB
+export SERVER_CONNECTION_TIMEOUT=120000
+```
+
+### 6. Start the application
+
+End users can start the already-built artifact directly with Java:
+
+```bash
+java -Xms512m -Xmx4g -jar target/gct-report-parser.jar
 ```
 
 The application starts on:
@@ -217,15 +134,29 @@ The application starts on:
 http://localhost:8080
 ```
 
-When running with Maven directly, PostgreSQL must also be available at the configured datasource URL. The Docker Compose deployment is recommended when you want to avoid manually configuring the environment.
+**Maven is not required to run the built JAR.**
 
-Open that address in a browser.
+For a server deployment, copy `gct-report-parser.jar` to the server and run:
 
-To stop the application:
-
-```text
-Ctrl+C
+```bash
+java -Xms512m -Xmx4g -jar gct-report-parser.jar
 ```
+
+To run it as a managed Linux service, use a systemd unit or the organization's standard service manager.
+
+## Jenkins / Tomcat deployment
+
+The application can also be deployed as a traditional WAR to an external Tomcat server.
+
+For that model:
+
+1. Change the Maven packaging to `war`.
+2. Extend `GctReportParserApplication` from `SpringBootServletInitializer`.
+3. Mark the embedded Tomcat dependency as `provided`.
+4. Build the WAR with Maven.
+5. Deploy the WAR from Jenkins to the Tomcat server.
+
+Spring Boot documents this traditional WAR deployment model and the required `SpringBootServletInitializer`, `<packaging>war</packaging>`, and provided Tomcat dependency. citeturn882665search0
 
 ## How to use the tool
 
@@ -331,8 +262,6 @@ PASS + PASS  -> PASS
 FAIL + FAIL  -> FAIL
 ```
 
-This is important for automation reruns. A testcase that passes in at least one execution is considered passed by the parser.
-
 ### Step 8 — Publish the dashboard
 
 After analysis:
@@ -358,12 +287,12 @@ Automation reports can contain very large `test_result.xml` files.
 
 The parser uses a **StAX streaming XML parser** rather than DOM. This means the complete XML document is not loaded into a large in-memory DOM tree.
 
-The application is also configured with:
+The application is configured with:
 
 - Maximum individual upload: **500 MB**
 - Maximum total multipart request: **1 GB**
 - Tomcat connection timeout: **120 seconds**
-- Spring Boot parser JVM heap: **512 MB initial / 4 GB maximum**
+- JVM heap recommendation: **512 MB initial / 4 GB maximum**
 
 For very large automation runs, use a machine with adequate RAM.
 
@@ -400,17 +329,7 @@ AutomationReport.zip
     └── .../test_result.xml
 ```
 
-The parser recursively searches ZIP files up to the configured nesting depth.
-
 ## Troubleshooting
-
-### `mvn: command not found`
-
-Install Maven and verify:
-
-```bash
-mvn -version
-```
 
 ### `java: command not found`
 
@@ -420,21 +339,32 @@ Install Java 17+ and verify:
 java -version
 ```
 
-### Browser cannot open `localhost:8080`
+### `mvn: command not found`
 
-First verify that the application is running:
+Maven is needed only to build/test from source. If you already have `gct-report-parser.jar`, Maven is not needed to run the application:
 
-```text
-mvn spring-boot:run
+```bash
+java -jar gct-report-parser.jar
 ```
 
-On Linux/WSL, also check:
+### Browser cannot open `localhost:8080`
+
+Verify that the application is running:
 
 ```bash
 ss -lntp | grep 8080
 ```
 
-If the application is listening inside WSL but Windows cannot access `localhost:8080`, try the WSL IP address or restart WSL networking.
+### PostgreSQL connection failure
+
+Verify that PostgreSQL is running and that these environment variables are correct:
+
+```bash
+echo "$SPRING_DATASOURCE_URL"
+echo "$SPRING_DATASOURCE_USERNAME"
+```
+
+Do not print the database password in shared logs.
 
 ### Upload is rejected
 
@@ -445,19 +375,13 @@ Individual file: 500 MB
 Total request:    1 GB
 ```
 
-### Report metadata is not detected
-
-Open the Tradefed `test_result.xml` and verify that the result metadata is present in the root `Result` element.
-
-The parser uses the available report metadata and does not depend on the uploaded ZIP filename.
-
 ### Build mismatch is displayed
 
 Check the build fingerprints of the uploaded reports. Reports from different builds are intentionally not combined.
 
 ### Parser runs out of memory
 
-The application already uses streaming StAX parsing and a 4 GB maximum heap for the Spring Boot Maven run. If very large reports still exceed available memory, make sure the host has sufficient RAM and avoid uploading unrelated large ZIPs in the same request.
+The application already uses streaming StAX parsing. If very large reports still exceed available memory, make sure the host has sufficient RAM and increase the JVM heap where appropriate.
 
 ## Development
 
@@ -473,10 +397,16 @@ Build the application:
 mvn clean package
 ```
 
-Run locally:
+Run locally from source:
 
 ```bash
 mvn spring-boot:run
+```
+
+Run the built artifact without Maven:
+
+```bash
+java -Xms512m -Xmx4g -jar target/gct-report-parser.jar
 ```
 
 Main project structure:
@@ -485,7 +415,12 @@ Main project structure:
 src/
 ├── main/
 │   ├── java/com/gct/parser/
-│   │   └── DashboardController.java
+│   │   ├── AnalysisHistoryEntity.java
+│   │   ├── AnalysisHistoryRepository.java
+│   │   ├── AnalysisHistoryService.java
+│   │   ├── DashboardController.java
+│   │   ├── GctReportParserApplication.java
+│   │   └── HtmlReportBuilder.java
 │   └── resources/
 │       ├── static/
 │       │   ├── index.html
