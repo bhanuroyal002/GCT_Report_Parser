@@ -107,8 +107,8 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
             h.append("<div class='empty'>No incomplete modules.</div>");
         } else {
             for (Map<String, Object> item : incomplete) {
-                h.append("<div class='issue'><strong>[")
-                        .append(e(text(item.get("suite")))).append("] ")
+                h.append("<div class='issue'><strong>")
+                        .append(e(text(item.get("suite")))).append(" ")
                         .append(e(text(item.get("module")))).append("</strong>");
                 int failedModules = number(item.get("failed"));
                 if (failedModules > 0) {
@@ -126,8 +126,8 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
             h.append("<div class='empty'>No failed test cases.</div>");
         } else {
             for (Map<String, Object> failure : failures) {
-                h.append("<div class='issue'><strong> - [")
-                        .append(e(text(failure.get("suite")))).append("] ")
+                h.append("<div class='issue'><strong> - ")
+                        .append(e(text(failure.get("suite")))).append(" ")
                         .append(e(text(failure.get("module")))).append(" :: ")
                         .append(e(text(failure.get("testCase")))).append("</strong>");
                 if (!text(failure.get("details")).isBlank()) {
