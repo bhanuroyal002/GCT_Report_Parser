@@ -1,9 +1,15 @@
 const state={data:null,files:[]};
 const $=id=>document.getElementById(id);
 const format=n=>Number(n||0).toLocaleString("en-IN");
+const formatBytes=b=>{const n=Number(b||0);if(n<1024)return n+' B';if(n<1048576)return (n/1024).toFixed(1)+' KB';if(n<1073741824)return (n/1048576).toFixed(1)+' MB';return (n/1073741824).toFixed(2)+' GB'};
+function suiteIcon(name){const n=String(name||'').toUpperCase();if(n.includes('CTS-ON-GSI'))return 'GSI';if(n.includes('VERIFIER'))return 'CV';if(n.includes('TVTS'))return 'TV';if(n.includes('GTS'))return 'G';if(n.includes('STS'))return 'S';if(n.includes('VTS'))return 'V';if(n.includes('CTS'))return 'C';return 'QA'};
+function setProgress(percent,title,detail,indeterminate=false){const box=$("analysisProgress");box.classList.remove("hidden");$("progressTitle").textContent=title;$("progressDetail").textContent=detail;$("progressPercent").textContent=indeterminate?"":percent+"%";$("progressBar").style.width=indeterminate?"35%":Math.max(0,Math.min(100,percent))+"%";$("progressTrack").classList.toggle("indeterminate",indeterminate)}
+function hideProgress(){clearInterval(state.progressTimer);state.progressTimer=null;$("analysisProgress").classList.add("hidden");$("progressTrack").classList.remove("indeterminate")}
 const esc=v=>String(v??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 function renderFiles(){
-  $("selectedFiles").innerHTML=state.files.map(f=>`<span class="file-chip">${esc(f.name)} <small>(${Math.round(f.size/1024)} KB)</small></span>`).join("");
+  const total=state.files.reduce((sum,f)=>sum+f.size,0);
+  $("selectedFiles").innerHTML=state.files.map(f=>`<span class="file-chip">${esc(f.name)} <small>${formatBytes(f.size)}</small></span>`).join("");
+  if(state.files.length)$("statusMessage").textContent=`${state.files.length} ZIP file${state.files.length===1?"":"s"} selected · ${formatBytes(total)} total`;
   $("analyzeBtn").disabled=!state.files.length;
   $("clearBtn").disabled=!state.files.length;
 }
@@ -58,22 +64,17 @@ function render(){
   $("readiness").className="readiness-chip "+(ready?"ready":"attention");
   const rate=((Number(o.passed||0)/Math.max(1,Number(o.totalTests||0)))*100).toFixed(1);
   $("stats").innerHTML=[
-    ["PASSED",format(o.passed),"Passed test cases"],
-    ["FAILED",format(o.failed),"Failed test cases"],
-    ["ASSUMPTION FAILURE",format(o.assumptionFailures),"Assumption failures"],
-    ["IGNORED",format(o.ignored),"Ignored test cases"],
-    ["TOTAL TESTS",format(o.totalTests),rate+"% pass rate"]
-  ].map(x=>`<div class="stat"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></div>`).join("");
+    ["PASSED",format(o.passed),"Passed test cases","pass"],
+    ["FAILED",format(o.failed),"Failed test cases","fail"],
+    ["ASSUMPTION FAILURE",format(o.assumptionFailures),"Assumption failures","warn"],
+    ["IGNORED",format(o.ignored),"Ignored test cases","warn"],
+    ["TOTAL TESTS",format(o.totalTests),rate+"% pass rate","total"]
+  ].map(x=>`<div class="stat ${x[3]}"><span>${x[0]}</span><strong>${x[1]}</strong><small>${x[2]}</small></div>`).join("");
 
   $("suiteGrid").innerHTML=s.map(x=>{
     const p=x.modules?Math.round(x.completedModules/x.modules*100):0;
-    return `<article class="suite">
-      <div class="suite-top"><h3>${esc(x.name)}</h3><span class="pill ${x.status==="COMPLETED"?"ok":"warn"}">${esc(x.status)}</span></div>
-      <div class="suite-number">${format(x.completedModules)} / ${format(x.modules)} modules</div>
-      <div class="progress"><i style="width:${p}%"></i></div>
-      <div class="suite-meta"><span>${p}% complete</span><span>${format(x.testCases)} total tests</span></div>
-      <div class="suite-fails">${format(x.passed)} passed · ${format(x.failed)} failed · ${format(x.assumptionFailures)} assumption failure · ${format(x.ignored)} ignored</div>
-    </article>`
+    const icon=suiteIcon(x.name);
+    return `<article class="suite"><div class="suite-top"><div class="suite-title"><span class="suite-icon">${icon}</span><h3>${esc(x.name)}</h3></div><span class="pill ${x.status==="COMPLETED"?"ok":"warn"}">${esc(x.status)}</span></div><div class="suite-number">${format(x.completedModules)} / ${format(x.modules)} modules</div><div class="progress"><i style="width:${p}%"></i></div><div class="suite-meta"><span>${p}% complete</span><span>${format(x.testCases)} total tests</span></div><div class="suite-fails"><span class="good">${format(x.passed)} passed</span> · <span class="bad">${format(x.failed)} failed</span> · ${format(x.assumptionFailures)} assumption failure · ${format(x.ignored)} ignored</div></article>`;
   }).join("");
 
   $("incompleteCount").textContent=inc.length;
@@ -98,30 +99,17 @@ loadHistory();$("publishBtn").disabled=true;$("viewBtn").disabled=true;
   if(issuesEl) issuesEl.style.display="grid";
   $("readiness").textContent="WAITING FOR REPORTS";$("readiness").className="readiness-chip";
 });
-$("analyzeBtn").addEventListener("click",async()=>{
-  const b=$("analyzeBtn");b.disabled=true;b.textContent="Analyzing reports…";
-  $("statusMessage").textContent="Uploading and parsing Tradefed result XML…";
-  const fd=new FormData();state.files.forEach(f=>fd.append("files",f));
-  try{
-    const r=await fetch("/api/analyze",{method:"POST",body:fd});
-    const d=await r.json();
-    if(!r.ok)throw new Error(d.error||"Analysis failed");
-    state.data=d;render();
-    const diagnostics=d.reportDiagnostics||[];
-    const xmlCount=Number(d.xmlReportsFound||0);
-    const recognized=Number(d.recognizedReports||0);
-    const buildCount=(d.builds||[]).length;
-    const diagnosticErrors=diagnostics.flatMap(x=>(x.errors||[]).map(err=>`${x.file}: ${err}`));
-    if(diagnosticErrors.length){
-      $("statusMessage").textContent=`Analysis found ${xmlCount} XML report(s), recognized ${recognized}. ${diagnosticErrors.join(" | ")}`;
-    }else{
-      $("statusMessage").textContent=`Analysis complete: ${xmlCount} XML report(s) • ${recognized} recognized • ${buildCount} build(s) • ${(d.suites||[]).length} suite(s).`;
-    }
-  }catch(e){
-    $("statusMessage").textContent=e.message;
-    $("readiness").textContent="ANALYSIS FAILED";
-    $("readiness").className="readiness-chip attention";
-  }finally{b.disabled=!state.files.length;b.textContent="Analyze Reports →"}
+$("analyzeBtn").addEventListener("click",()=>{
+  const b=$("analyzeBtn");b.disabled=true;$("clearBtn").disabled=true;b.textContent="Analyzing reports…";
+  $("statusMessage").textContent="Starting upload…";setProgress(0,"Uploading reports…","Preparing ZIP files for the parser.");
+  const fd=new FormData();state.files.forEach(f=>fd.append("files",f));const xhr=new XMLHttpRequest();xhr.open("POST","/api/analyze",true);
+  xhr.upload.onprogress=e=>{if(e.lengthComputable){const pct=Math.round(e.loaded/e.total*100);setProgress(pct,"Uploading reports…",`${formatBytes(e.loaded)} of ${formatBytes(e.total)} uploaded.`)}};
+  xhr.upload.onload=()=>{setProgress(100,"Reports uploaded","Server is now scanning ZIP files and parsing Tradefed XML reports.",true);clearInterval(state.progressTimer);let phase=0;const phases=["Scanning ZIP files…","Reading Tradefed test_result.xml…","Merging suites and reruns…","Building certification dashboard…"];state.progressTimer=setInterval(()=>{phase=(phase+1)%phases.length;$("progressDetail").textContent=phases[phase]},900)};
+  xhr.onerror=()=>finishAnalysis(new Error("Unable to connect to the analysis server."));xhr.ontimeout=()=>finishAnalysis(new Error("Analysis request timed out."));
+  xhr.onload=()=>{try{const d=JSON.parse(xhr.responseText||"{}");if(xhr.status<200||xhr.status>=300)throw new Error(d.error||"Analysis failed");state.data=d;render();const diagnostics=d.reportDiagnostics||[],xmlCount=Number(d.xmlReportsFound||0),recognized=Number(d.recognizedReports||0),buildCount=(d.builds||[]).length,diagnosticErrors=diagnostics.flatMap(x=>(x.errors||[]).map(err=>`${x.file}: ${err}`));hideProgress();$("statusMessage").textContent=diagnosticErrors.length?`Analysis found ${xmlCount} XML report(s), recognized ${recognized}. ${diagnosticErrors.join(" | ")}`:`Analysis complete: ${xmlCount} XML report(s) • ${recognized} recognized • ${buildCount} build(s) • ${(d.suites||[]).length} suite(s).`}catch(e){finishAnalysis(e)}};
+  xhr.send(fd);
+  function finishAnalysis(error){hideProgress();$("statusMessage").textContent=error.message;$("readiness").textContent="ANALYSIS FAILED";$("readiness").className="readiness-chip attention";b.disabled=!state.files.length;$("clearBtn").disabled=!state.files.length;b.textContent="Analyze Reports →"}
+  xhr.onloadend=()=>{if(xhr.status>=200&&xhr.status<300){b.disabled=!state.files.length;$("clearBtn").disabled=!state.files.length;b.textContent="Analyze Reports →"}};
 });
 async function getDashboardUrl(dashboard=state.data){
   if(!dashboard)throw new Error("Analyze reports first");
