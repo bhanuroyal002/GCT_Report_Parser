@@ -18,6 +18,8 @@ The tool is intended for Android automation and certification workflows where mu
 - Highlights incomplete modules.
 - Lists final failed test cases and failure details.
 - Provides a stakeholder-facing dashboard that can be viewed or downloaded as standalone HTML.
+- Stores the latest **20 successful analysis runs** in PostgreSQL and lets users view/download historical dashboards.
+- Provides a Docker Compose deployment with PostgreSQL so the team can use the application without installing Java/Maven locally.
 - Uses a streaming StAX XML parser to handle large Tradefed result files without loading the entire XML document into memory.
 
 ## Supported reports
@@ -35,13 +37,15 @@ The tool automatically analyzes the available report data and generates a consol
 | Requirement | Version / Details |
 |---|---|
 | Java | **17 or later** |
-| Maven | **3.9 or later recommended** |
+| Maven | **3.9 or later recommended** for source builds |
+| PostgreSQL | **16+** for non-Docker local runs |
+| Docker | **Docker Engine + Docker Compose** for recommended team deployment |
 | Git | Required to clone/update the repository |
 | Browser | Modern Chrome, Edge or Firefox |
 | RAM | **8 GB minimum recommended**; 16 GB+ preferred for large reports |
 | Disk space | Sufficient space for uploaded ZIPs, extracted/processed reports and Maven dependencies |
 
-No database, Node.js, Python or Android SDK is required to run the web application.
+Node.js, Python and Android SDK are not required. PostgreSQL is used for shared analysis history. The recommended team deployment runs both the application and PostgreSQL in Docker, so team members do not need Java, Maven or PostgreSQL installed.
 
 ### Recommended environment
 
@@ -51,6 +55,107 @@ The application can run on:
 - WSL2
 - Windows/macOS/Linux with Java and Maven installed
 
+## Recommended team deployment
+
+For shared team usage, run the application and PostgreSQL with Docker Compose.
+
+### Requirements on the server
+
+Only Docker is required:
+
+```bash
+docker --version
+docker compose version
+```
+
+### Start the team server
+
+Clone the repository on an always-on Ubuntu/Linux or Windows server:
+
+```bash
+git clone https://github.com/bhanuroyal002/GCT_Report_Parser.git
+cd GCT_Report_Parser
+```
+
+Build and start both containers:
+
+```bash
+docker compose up -d --build
+```
+
+Check the containers:
+
+```bash
+docker compose ps
+```
+
+Open from the server itself:
+
+```text
+http://localhost:8080
+```
+
+From other machines on the same network, use the server's IP address:
+
+```text
+http://<server-ip>:8080
+```
+
+The deployment contains:
+
+```text
+gct-report-parser
+        |
+        +---- PostgreSQL 16
+                  |
+                  +---- gct-postgres-data volume
+```
+
+The PostgreSQL volume keeps the shared analysis history when the containers are restarted or recreated.
+
+### Stop the server
+
+```bash
+docker compose down
+```
+
+This stops the containers but keeps the PostgreSQL volume.
+
+### Start again
+
+```bash
+docker compose up -d
+```
+
+### Important: do not use `docker compose down -v`
+
+The `-v` option deletes the PostgreSQL volume and therefore deletes the stored analysis history.
+
+### Shared 20-run history
+
+Every successful analysis is stored in PostgreSQL. The application keeps only the newest 20 successful runs.
+
+Each run contains the complete parsed dashboard data, so users can:
+
+- View a previous dashboard.
+- Download a previous dashboard as standalone HTML.
+- Continue using the current analysis independently.
+
+A failed HTTP request or analysis that produces no recognized Tradefed report is not stored as a successful history run.
+
+### Database persistence
+
+The PostgreSQL data is stored in the Docker named volume:
+
+```text
+gct-postgres-data
+```
+
+The application does not store uploaded ZIP files permanently. The ZIPs are processed for the current analysis and are not inserted into the database.
+
+### Production note
+
+For an internal company deployment, expose port 8080 only inside the company network or place the application behind the company's reverse proxy/HTTPS endpoint. The default Docker Compose credentials are intended for an internal demo/deployment and should be changed before a wider production rollout.
 ## Installation
 
 ### 1. Clone the repository
@@ -109,6 +214,8 @@ The application starts on:
 ```text
 http://localhost:8080
 ```
+
+When running with Maven directly, PostgreSQL must also be available at the configured datasource URL. The Docker Compose deployment is recommended when you want to avoid manually configuring the environment.
 
 Open that address in a browser.
 
