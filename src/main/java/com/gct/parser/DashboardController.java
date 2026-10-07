@@ -696,7 +696,7 @@ public class DashboardController {
         String suite = reports.get(0).suite;
         String plan = null, version = null, buildNumber = null, hostInfo = null;
         String start = null, end = null, fingerprint = null, patch = null;
-        String release = null, sdk = null, abis = null;
+        String release = null, sdk = null, abis = null, buildId = null, buildType = null;
 
         Map<String, TestResultData> testResults = new LinkedHashMap<>();
         Map<String, Boolean> moduleDoneStates = new LinkedHashMap<>();
