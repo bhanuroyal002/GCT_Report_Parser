@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gct-parser-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: gct_parser
+      POSTGRES_USER: gct_parser
+      POSTGRES_PASSWORD: gct_parser
+    volumes:
+      - gct-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gct_parser -d gct_parser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  gct-parser:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gct-report-parser
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/gct_parser
+      SPRING_DATASOURCE_USERNAME: gct_parser
+      SPRING_DATASOURCE_PASSWORD: gct_parser
+      MAX_FILE_SIZE: 500MB
+      MAX_REQUEST_SIZE: 1GB
+      SERVER_CONNECTION_TIMEOUT: 120000
+      JAVA_TOOL_OPTIONS: -Xms512m -Xmx4g
+    ports:
+      - "8080:8080"
+
+volumes:
+  gct-postgres-data:
