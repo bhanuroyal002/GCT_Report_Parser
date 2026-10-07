@@ -18,8 +18,26 @@ function render(){
   $("androidVersion").textContent=fingerprintMismatch?"MULTIPLE":(primaryBuild.androidVersion||d.androidVersion||"Not detected");
 
   $("buildMismatch").innerHTML=fingerprintMismatch?(
-    `<div class="mismatch-panel"><div class="panel-title"><div><span class="section-kicker">BUILD MISMATCH</span><h3>Build information</h3></div><span class="count-badge danger">${format(builds.length)} builds</span></div><p>Reports with the same build fingerprint are grouped into one build entry.</p><div class="fingerprint-table">${builds.map((x,i)=>`<div class="fingerprint-row"><strong>Build ${String.fromCharCode(65+i)}</strong><span><b>Suite:</b> ${esc((x.suites||[]).join(", ")||"Not detected")}<br><b>Fingerprint:</b> ${esc(x.fingerprint||"Not detected")}<br><b>Android:</b> ${esc(x.androidVersion||"Not detected")}<br><b>Security Patch:</b> ${esc(x.securityPatch||"Not detected")}</span></div>`).join("")}</div></div>`
+    `<div class="mismatch-panel"><div class="panel-title"><div><span class="section-kicker">BUILD MISMATCH</span><h3>Build information</h3></div><span class="count-badge danger">${format(builds.length)} builds</span></div><p>Reports with the same build fingerprint are grouped into one build entry.</p><div class="fingerprint-table">${builds.map((x,i)=>`<div class="fingerprint-row"><strong>Build ${String.fromCharCode(65+i)}</strong><span><b>Suite:</b> ${esc((x.suites||[]).join(", ")||"Not detected")}<br><b>Fingerprint:</b> ${esc(x.fingerprint||"Not detected")}<br><b>Android:</b> ${esc(x.androidVersion||"Not detected")}<br><b>Security Patch:</b> ${esc(x.securityPatch||"Not detected")}<br><b>Build ID:</b> ${esc(x.buildId||"Not detected")}<br><b>Build Type:</b> ${esc(x.buildType||"Not detected")}<br><b>SDK:</b> ${esc(x.sdk||"Not detected")}<br><b>Architecture:</b> ${esc(x.abis||"Not detected")}</span></div>`).join("")}</div></div>`
   ):"";
+
+  $("buildInfoCard").innerHTML=fingerprintMismatch?"":`
+    <section class="build-info-section">
+      <div class="build-info-header">
+        <div><span class="section-kicker">BUILD INFORMATION</span><h3>Device build details</h3></div>
+        <span class="build-info-count">${format(builds.length)} build${builds.length===1?"":"s"}</span>
+      </div>
+      <div class="build-info-grid">
+        <div class="build-info-item wide"><span>Build Fingerprint</span><strong>${esc(primaryBuild.fingerprint||d.buildFingerprint||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Android Version</span><strong>${esc(primaryBuild.androidVersion||d.androidVersion||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Security Patch</span><strong>${esc(primaryBuild.securityPatch||d.securityPatch||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Build ID</span><strong>${esc(primaryBuild.buildId||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Build Type</span><strong>${esc(primaryBuild.buildType||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>SDK Version</span><strong>${esc(primaryBuild.sdk||"Not detected")}</strong></div>
+        <div class="build-info-item"><span>Architecture</span><strong>${esc(primaryBuild.abis||"Not detected")}</strong></div>
+        <div class="build-info-item wide"><span>Suites in This Build</span><strong>${esc((primaryBuild.suites||[]).join(", ")||"Not detected")}</strong></div>
+      </div>
+    </section>`;
 
   const ready=s.length&&Number(o.failed||0)===0&&inc.length===0&&!fingerprintMismatch;
 
@@ -72,6 +90,7 @@ $("clearBtn").addEventListener("click",()=>{
   $("incompleteList").innerHTML="";$("failureList").innerHTML="";
   $("incompleteCount").textContent="0";$("failureCount").textContent="0";
   $("buildMismatch").innerHTML="";
+  $("buildInfoCard").innerHTML="";
   $("buildFingerprint").textContent="Not detected";
   $("androidVersion").textContent="Not detected";
   $("securityPatch").textContent="Not detected";
