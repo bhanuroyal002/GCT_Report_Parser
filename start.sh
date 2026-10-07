@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$APP_DIR"
 
 echo "========================================"
@@ -50,13 +50,13 @@ else
     echo "Environment ready."
 fi
 
-HOST="\${HOST:-127.0.0.1}"
-PORT="\${PORT:-8080}"
+HOST="${HOST:-127.0.0.1}"
+PORT="${PORT:-8080}"
 
 echo
 echo "Starting GCT Report Parser..."
 echo
-echo "Application: http://\${HOST}:\${PORT}"
+echo "Application: http://${HOST}:${PORT}"
 echo "Press Ctrl+C to stop."
 echo
 
