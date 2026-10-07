@@ -31,7 +31,7 @@ public final class HtmlReportBuilder {
         h.append("""
 <!doctype html><html lang="en"><head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>GCT Dashboard</title>
+<title>GCT Report Parser · Certification Intelligence</title>
 <style>
 :root{--bg:#f5f6f8;--card:#fff;--ink:#18202a;--muted:#68727d;--line:#dfe3e8;--red:#c62828;--green:#137a52;--greenbg:#e8f6ef;--redbg:#fdecec;--blue:#245ea8}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px Arial,Helvetica,sans-serif}
@@ -49,8 +49,8 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
 </style></head><body><div class="wrap">
 """);
 
-        h.append("<div class='header'><div><h1>GCT Certification Dashboard</h1>")
-                .append("<div class='subtitle'>GCT test execution summary for stakeholder review</div></div>")
+        h.append("<div class='header'><div><h1>GCT Report Parser</h1>")
+                .append("<div class='subtitle'>Certification Intelligence Dashboard · Test execution summary for stakeholder review</div></div>")
                 .append("<div class='status ").append(overallPass ? "pass" : "fail").append("'>")
                 .append(fingerprintMismatch ? "BUILD MISMATCH" : (overallPass ? "PASS" : "ATTENTION REQUIRED")).append("</div></div>");
 
@@ -76,7 +76,7 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
         h.append("</section>");
 
         if (fingerprintMismatch) {
-            h.append("<div class='footer'>Build mismatch detected. Test-case and module metrics were not included because the uploaded reports belong to different builds.</div></div></body></html>");
+            h.append("<div class='footer'><strong>GCT Report Parser</strong> · Certification Intelligence<br>© 2026 CERT_Team · Internal Certification Tool<br>Build mismatch detected. Test-case and module metrics were not included because the uploaded reports belong to different builds.</div></div></body></html>");
             return h.toString();
         }
 
@@ -138,8 +138,8 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
         }
         h.append("</section>");
 
-        h.append("<div class='footer'>Generated ").append(e(generated))
-                .append(" · GCT Report Parser</div></div></body></html>");
+        h.append("undefined").append(e(generated))
+                .append(" · GCT Report Parser · Certification Intelligence<br>© 2026 CERT_Team · Internal Certification Tool</div></div></body></html>");
         return h.toString();
     }
 
