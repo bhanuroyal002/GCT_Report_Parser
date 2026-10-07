@@ -13,11 +13,13 @@ The tool is designed for Android automation and certification workflows where CT
 - Stops aggregation when different builds are uploaded together.
 - Merges split reports and reruns.
 - **Rerun rule:** if the same testcase passes in any execution, the final state is PASS.
-- Shows build fingerprint, Android version and security patch.
+- Shows build fingerprint, Android version, security patch, build ID, SDK, architecture and suite-to-build grouping.
 - Shows module completion and testcase counts.
 - Highlights incomplete modules.
 - Lists final failed testcases and failure details.
-- Generates a standalone HTML dashboard.
+- Generates the full stakeholder-style standalone HTML dashboard.
+- Supports View/Download for the current dashboard and every historical run.
+- Shows upload/XML diagnostics and safely ignores exact duplicate XML reports.
 - Stores the latest 20 successful analysis runs in a local SQLite database.
 
 ## Technology
@@ -137,7 +139,7 @@ The application reads configuration from environment variables:
 | DATABASE_PATH | data/gct_report_parser.db | SQLite database |
 | MAX_FILE_SIZE_MB | 500 | Maximum individual ZIP |
 | MAX_REQUEST_SIZE_MB | 1024 | Maximum upload request |
-| MAX_ZIP_DEPTH | 5 | Nested ZIP recursion limit |
+| MAX_ZIP_DEPTH | 20 | Nested ZIP recursion limit |
 
 The application does not require the `.env` file; environment variables can be exported directly.
 
@@ -197,7 +199,7 @@ The dashboard shows:
 - SDK
 - Architecture
 
-Reports with different build fingerprints are not merged.
+Reports with different build fingerprints are not merged for test metrics. The dashboard still records the individual build/suite information so the mismatch can be diagnosed.
 
 ### Step 5 — Review results
 
@@ -252,13 +254,13 @@ If reports contain different fingerprints, the application displays:
 BUILD MISMATCH
 ```
 
-Testcase/module aggregation is intentionally stopped.
+Testcase/module metrics are intentionally suppressed to prevent results from different device builds from being silently combined.
 
 This prevents results from different device builds from being silently combined.
 
 ## History
 
-The application stores the latest **20 successful analysis runs** in SQLite.
+The application stores the latest **20 successful analysis runs** in SQLite. A successful run means at least one Tradefed report was recognized; failed testcases and build-mismatch results are still valid analyses and are retained.
 
 The history contains:
 
