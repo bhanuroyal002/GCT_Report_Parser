@@ -520,6 +520,9 @@ public class DashboardController {
                     if ("Failure".equals(name) && currentTest != null) {
                         inFailure = true;
                         currentFailureMessage = firstNonBlank(streamAttr(reader, "message"), "");
+                        if (currentFailureMessage == null) {
+                            currentFailureMessage = "";
+                        }
                         continue;
                     }
 
