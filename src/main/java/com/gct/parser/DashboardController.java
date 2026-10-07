@@ -235,9 +235,11 @@ public class DashboardController {
 
     @GetMapping("/history/{runId}")
     public ResponseEntity<Map<String, Object>> historyRun(@PathVariable String runId) {
-        return historyService.find(runId)
-                .map(ResponseEntity::ok)
-                .orElseGet(() -> ResponseEntity.notFound().build());
+        Optional<Map<String, Object>> result = historyService.find(runId);
+        if (result.isPresent()) {
+            return ResponseEntity.ok(result.get());
+        }
+        return ResponseEntity.notFound().build();
     }
 
     @GetMapping("/dashboard")
