@@ -84,7 +84,8 @@ function render(){
 }
 $("reportFiles").addEventListener("change",e=>{state.files=[...e.target.files];renderFiles()});
 $("clearBtn").addEventListener("click",()=>{
-  state.files=[];state.data=null;$("reportFiles").value="";renderFiles();$("publishBtn").disabled=true;$("viewBtn").disabled=true;
+  state.files=[];state.data=null;$("reportFiles").value="";renderFiles();
+loadHistory();$("publishBtn").disabled=true;$("viewBtn").disabled=true;
   $("statusMessage").textContent="";$("stats").innerHTML="";$("suiteGrid").innerHTML="";
   $("incompleteList").innerHTML="";$("failureList").innerHTML="";
   $("incompleteCount").textContent="0";$("failureCount").textContent="0";
@@ -122,9 +123,9 @@ $("analyzeBtn").addEventListener("click",async()=>{
     $("readiness").className="readiness-chip attention";
   }finally{b.disabled=!state.files.length;b.textContent="Analyze Reports →"}
 });
-async function getDashboardUrl(){
-  if(!state.data)throw new Error("Analyze reports first");
-  const r=await fetch("/api/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(state.data)});
+async function getDashboardUrl(dashboard=state.data){
+  if(!dashboard)throw new Error("Analyze reports first");
+  const r=await fetch("/api/publish",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(dashboard)});
   if(!r.ok)throw new Error("Publish failed");
   return URL.createObjectURL(await r.blob());
 }
@@ -137,6 +138,57 @@ $("viewBtn").addEventListener("click",async()=>{
     setTimeout(()=>URL.revokeObjectURL(url),60000);
   }catch(e){alert(e.message)}finally{b.disabled=false;b.textContent="View Dashboard ↗"}
 });
+
+async function loadHistory(){
+  try{
+    const r=await fetch("/api/history");
+    if(!r.ok)throw new Error("Unable to load analysis history");
+    const d=await r.json();
+    const runs=d.runs||[],limit=Number(d.maxRuns||20);
+    $("historyCount").textContent=`${runs.length} / ${limit}`;
+    if(!runs.length){
+      $("historyList").innerHTML="<div class='empty'>No successful analysis runs stored yet.</div>";
+      return;
+    }
+    $("historyList").innerHTML=runs.map((run,index)=>{
+      const date=run.analyzedAt?new Date(run.analyzedAt).toLocaleString("en-IN"):"Unknown";
+      const statusClass=run.status==="READY FOR REVIEW"?"ready":(run.status==="BUILD MISMATCH"?"mismatch":"attention");
+      return `<article class="history-row">
+        <div class="history-run"><strong>#${runs.length-index}</strong><span>${esc(date)}</span></div>
+        <div class="history-build"><span>BUILD</span><strong>${esc(run.buildFingerprint||"Not detected")}</strong></div>
+        <div class="history-metrics"><span>${format(run.suiteCount)} suites</span><span>${format(run.totalTests)} tests</span><span>${format(run.failed)} failed</span></div>
+        <span class="history-status ${statusClass}">${esc(run.status||"UNKNOWN")}</span>
+        <div class="history-actions">
+          <button class="secondary history-view" data-run-id="${esc(run.runId)}">View</button>
+          <button class="primary history-download" data-run-id="${esc(run.runId)}">Download</button>
+        </div>
+      </article>`;
+    }).join("");
+    document.querySelectorAll(".history-view").forEach(btn=>btn.addEventListener("click",()=>openHistoryRun(btn.dataset.runId,false)));
+    document.querySelectorAll(".history-download").forEach(btn=>btn.addEventListener("click",()=>openHistoryRun(btn.dataset.runId,true)));
+  }catch(e){
+    $("historyList").innerHTML=`<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+async function openHistoryRun(runId,download){
+  try{
+    const r=await fetch("/api/history/"+encodeURIComponent(runId));
+    if(!r.ok)throw new Error("Historical run not found");
+    const dashboard=await r.json();
+    const url=await getDashboardUrl(dashboard);
+    if(download){
+      const a=document.createElement("a");
+      a.href=url;
+      a.download="gct-certification-dashboard-"+runId+".html";
+      a.click();
+      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    }else{
+      const win=window.open(url,"_blank");
+      if(!win)throw new Error("Popup blocked. Please allow popups for this site.");
+      setTimeout(()=>URL.revokeObjectURL(url),60000);
+    }
+  }catch(e){alert(e.message)}
+}
 $("publishBtn").addEventListener("click",async()=>{
   const b=$("publishBtn");b.disabled=true;b.textContent="Preparing dashboard…";
   try{
