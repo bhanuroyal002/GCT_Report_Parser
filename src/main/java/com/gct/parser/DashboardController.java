@@ -27,56 +27,69 @@ public class DashboardController {
             return ResponseEntity.badRequest().body(Map.of("error", "Upload at least one report ZIP file."));
         }
 
+        List<ParsedReport> allReports = new ArrayList<>();
+
+        for (MultipartFile file : files) {
+            allReports.addAll(parse(file));
+        }
+
+        // Build identity is determined ONLY by the normalized build fingerprint.
+        // Suite is a child of the build, not part of build identity.
+        Map<String, List<ParsedReport>> reportsByBuild = new LinkedHashMap<>();
+        Set<String> knownFingerprints = new LinkedHashSet<>();
+        boolean unknownFingerprintPresent = false;
+
+        for (ParsedReport report : allReports) {
+            String fingerprintValue = firstNonBlank(report.fingerprint, "Not detected").trim();
+            String fingerprintKey = normalizeFingerprint(fingerprintValue);
+
+            if (fingerprintKey.isBlank() || "not detected".equals(fingerprintKey)) {
+                unknownFingerprintPresent = true;
+            } else {
+                knownFingerprints.add(fingerprintKey);
+            }
+
+            reportsByBuild.computeIfAbsent(fingerprintKey.isBlank() ? "not detected" : fingerprintKey,
+                    k -> new ArrayList<>()).add(report);
+        }
+
+        // A known build + unknown build identity cannot safely be merged.
+        // Treat it as incomplete build identity rather than silently choosing one build.
+        boolean multipleKnownBuilds = knownFingerprints.size() > 1;
+        boolean buildIdentityIncomplete = unknownFingerprintPresent && !knownFingerprints.isEmpty();
+        boolean fingerprintMismatch = multipleKnownBuilds || buildIdentityIncomplete;
+
         List<Map<String, Object>> suites = new ArrayList<>();
         List<Map<String, Object>> incomplete = new ArrayList<>();
         List<Map<String, Object>> failures = new ArrayList<>();
 
-        String fingerprint = "Not detected";
-        String patch = "Not detected";
-
-        // Reports are merged only when BOTH suite and build fingerprint match.
-        // This prevents results from different device builds from being combined.
-        Map<String, List<ParsedReport>> reportsByBuild = new LinkedHashMap<>();
-        Set<String> fingerprints = new LinkedHashSet<>();
-
-        for (MultipartFile file : files) {
-            List<ParsedReport> parsedReports = parse(file);
-
-            for (ParsedReport parsed : parsedReports) {
-                if (parsed.suite == null) {
-                    continue;
-                }
-
-                String reportFingerprint = firstNonBlank(parsed.fingerprint, "Not detected");
-                fingerprints.add(reportFingerprint);
-
-                String suiteKey = parsed.suite.toLowerCase(Locale.ROOT);
-                String fingerprintKey = reportFingerprint.toLowerCase(Locale.ROOT);
-                String groupKey = suiteKey + "||" + fingerprintKey;
-
-                reportsByBuild.computeIfAbsent(groupKey, k -> new ArrayList<>()).add(parsed);
-
-                if (!"Not detected".equals(parsed.fingerprint)) {
-                    fingerprint = parsed.fingerprint;
-                }
-                if (!"Not detected".equals(parsed.patch)) {
-                    patch = parsed.patch;
-                }
+        for (List<ParsedReport> buildReports : reportsByBuild.values()) {
+            // parse() has already merged same-suite reports with the same fingerprint.
+            // Keep that build grouping intact and expose one row per suite.
+            for (ParsedReport report : buildReports) {
+                suites.add(report.toMap());
+                incomplete.addAll(report.incompleteModules);
+                failures.addAll(report.failures);
             }
         }
 
-        for (List<ParsedReport> reports : reportsByBuild.values()) {
-            ParsedReport merged = mergeReports(reports);
-            suites.add(merged.toMap());
-            incomplete.addAll(merged.incompleteModules);
-            failures.addAll(merged.failures);
-        }
+        String fingerprint = "Not detected";
+        String patch = "Not detected";
 
-        boolean fingerprintMismatch = fingerprints.size() > 1
-                && !fingerprints.contains("Not detected");
-
-        if (fingerprintMismatch) {
-            fingerprint = "MULTIPLE BUILDS DETECTED";
+        if (knownFingerprints.size() == 1 && !buildIdentityIncomplete) {
+            ParsedReport firstKnown = allReports.stream()
+                    .filter(r -> !normalizeFingerprint(r.fingerprint).isBlank()
+                            && !"not detected".equals(normalizeFingerprint(r.fingerprint)))
+                    .findFirst()
+                    .orElse(null);
+            if (firstKnown != null) {
+                fingerprint = firstKnown.fingerprint;
+                patch = firstKnown.patch;
+            }
+        } else if (fingerprintMismatch) {
+            fingerprint = multipleKnownBuilds
+                    ? "MULTIPLE BUILDS DETECTED"
+                    : "BUILD IDENTITY INCOMPLETE";
         }
 
         int total = suites.stream().mapToInt(s -> number(s.get("testCases"))).sum();
@@ -87,27 +100,29 @@ public class DashboardController {
         int warnings = suites.stream().mapToInt(s -> number(s.get("warnings"))).sum();
 
         Map<String, Object> overall = new LinkedHashMap<>();
-        overall.put("totalTests", total);
-        overall.put("passed", passed);
-        overall.put("failed", failed);
-        overall.put("assumptionFailures", assumptionFailures);
-        overall.put("ignored", ignored);
-        overall.put("warnings", warnings);
-        overall.put("blocked", incomplete.size());
+        overall.put("totalTests", fingerprintMismatch ? 0 : total);
+        overall.put("passed", fingerprintMismatch ? 0 : passed);
+        overall.put("failed", fingerprintMismatch ? 0 : failed);
+        overall.put("assumptionFailures", fingerprintMismatch ? 0 : assumptionFailures);
+        overall.put("ignored", fingerprintMismatch ? 0 : ignored);
+        overall.put("warnings", fingerprintMismatch ? 0 : warnings);
+        overall.put("blocked", fingerprintMismatch ? 0 : incomplete.size());
         overall.put("fingerprintMismatch", fingerprintMismatch);
-        overall.put("multipleBuilds", fingerprints.size() > 1);
+        overall.put("multipleBuilds", multipleKnownBuilds);
+        overall.put("buildIdentityIncomplete", buildIdentityIncomplete);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("generatedAt", Instant.now().toString());
         out.put("buildFingerprint", fingerprint);
         out.put("securityPatch", patch);
 
-        // Group all suites by unique build fingerprint. If CTS/GTS/VTS share
-        // the same fingerprint, they are represented as one build entry.
+        // One build entry per unique fingerprint. Suites sharing a fingerprint
+        // are listed together under that build.
         Map<String, Map<String, Object>> buildMap = new LinkedHashMap<>();
         for (Map<String, Object> suite : suites) {
             String fp = firstNonBlank(textValue(suite.get("fingerprint")), "Not detected");
-            String key = fp.toLowerCase(Locale.ROOT);
+            String key = normalizeFingerprint(fp);
+            if (key.isBlank()) key = "not detected";
 
             Map<String, Object> build = buildMap.computeIfAbsent(key, k -> {
                 Map<String, Object> item = new LinkedHashMap<>();
@@ -124,17 +139,13 @@ public class DashboardController {
 
             String suitePatch = textValue(suite.get("securityPatch"));
             String suiteRelease = textValue(suite.get("release"));
-            if (!suitePatch.isBlank() && !"Not detected".equalsIgnoreCase(suitePatch)) {
-                build.put("securityPatch", suitePatch);
-            }
-            if (!suiteRelease.isBlank() && !"Not detected".equalsIgnoreCase(suiteRelease)) {
-                build.put("androidVersion", suiteRelease);
-            }
-
             String suiteBuildId = textValue(suite.get("buildId"));
             String suiteBuildType = textValue(suite.get("buildType"));
             String suiteSdk = textValue(suite.get("sdk"));
             String suiteAbis = textValue(suite.get("abis"));
+
+            if (!suitePatch.isBlank() && !"Not detected".equalsIgnoreCase(suitePatch)) build.put("securityPatch", suitePatch);
+            if (!suiteRelease.isBlank() && !"Not detected".equalsIgnoreCase(suiteRelease)) build.put("androidVersion", suiteRelease);
             if (!suiteBuildId.isBlank() && !"Not detected".equalsIgnoreCase(suiteBuildId)) build.put("buildId", suiteBuildId);
             if (!suiteBuildType.isBlank() && !"Not detected".equalsIgnoreCase(suiteBuildType)) build.put("buildType", suiteBuildType);
             if (!suiteSdk.isBlank() && !"Not detected".equalsIgnoreCase(suiteSdk)) build.put("sdk", suiteSdk);
@@ -142,7 +153,8 @@ public class DashboardController {
 
             @SuppressWarnings("unchecked")
             Set<String> buildSuites = (Set<String>) build.get("suites");
-            buildSuites.add(textValue(suite.get("name")));
+            String suiteName = textValue(suite.get("name"));
+            if (!suiteName.isBlank()) buildSuites.add(suiteName);
         }
 
         for (Map<String, Object> build : buildMap.values()) {
@@ -153,18 +165,21 @@ public class DashboardController {
 
         List<Map<String, Object>> builds = new ArrayList<>(buildMap.values());
         out.put("builds", builds);
-
-        String androidVersion = builds.isEmpty()
+        out.put("androidVersion", builds.isEmpty()
                 ? "Not detected"
-                : textValue(builds.get(0).get("androidVersion"));
-        out.put("androidVersion", androidVersion);
-        out.put("fingerprints", new ArrayList<>(fingerprints));
+                : textValue(builds.get(0).get("androidVersion")));
+        out.put("fingerprints", new ArrayList<>(knownFingerprints));
         out.put("overall", overall);
         out.put("suites", suites);
-        out.put("incompleteModules", incomplete);
-        out.put("failures", failures);
+        out.put("incompleteModules", fingerprintMismatch ? List.of() : incomplete);
+        out.put("failures", fingerprintMismatch ? List.of() : failures);
 
         return ResponseEntity.ok(out);
+    }
+
+    private static String normalizeFingerprint(String fingerprint) {
+        String value = firstNonBlank(fingerprint, "");
+        return value.trim().toLowerCase(Locale.ROOT);
     }
 
     @GetMapping("/dashboard")
