@@ -33,19 +33,20 @@ public final class HtmlReportBuilder {
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>GCT Report Parser · Certification Intelligence</title>
 <style>
-:root{--bg:#f5f6f8;--card:#fff;--ink:#18202a;--muted:#68727d;--line:#dfe3e8;--red:#c62828;--green:#137a52;--greenbg:#e8f6ef;--redbg:#fdecec;--blue:#245ea8}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px Arial,Helvetica,sans-serif}
-.wrap{max-width:1050px;margin:0 auto;padding:28px 22px 45px}.header{background:#fff;border:1px solid var(--line);padding:24px 28px;display:flex;justify-content:space-between;gap:20px;align-items:center}
-h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{padding:12px 18px;border-radius:6px;font-weight:800;font-size:15px}
-.status.pass{background:var(--greenbg);color:var(--green)}.status.fail{background:var(--redbg);color:var(--red)}
-.section{background:var(--card);border:1px solid var(--line);margin-top:16px;padding:20px}.title{font-weight:800;font-size:13px;margin-bottom:14px}
-.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.field{border-left:3px solid var(--line);padding-left:10px}.field label{display:block;color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase;margin-bottom:5px}.field strong{font-size:13px;word-break:break-word}
-.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse}th{background:#eef1f4;text-align:left;font-size:11px;text-transform:uppercase;color:#56616c;padding:11px}td{padding:11px;border-bottom:1px solid var(--line)}tbody tr:hover{background:#fafbfc}
-.pass-text{color:var(--green);font-weight:800}.fail-text{color:var(--red);font-weight:800}.inc-text{color:var(--red);font-weight:800}
-.issue{padding:10px 0;border-bottom:1px solid var(--line)}.issue:last-child{border-bottom:0}.issue strong{display:block}.issue span{display:block;color:var(--muted);margin-top:4px;font-size:12px}
-.empty{color:var(--green);background:var(--greenbg);padding:12px;border-radius:4px}.footer{text-align:center;color:var(--muted);font-size:11px;line-height:1.7;margin-top:24px;padding-top:6px}.footer div+div{margin-top:4px}
-@media(max-width:700px){.header{display:block}.status{display:inline-block;margin-top:15px}.summary{grid-template-columns:1fr}.wrap{padding:15px 10px}}
-@media print{body{background:#fff}.wrap{max-width:none;padding:0}.section,.header{break-inside:avoid}}
+:root{--bg:#f4f7fb;--card:#fff;--ink:#172033;--muted:#667085;--line:#dfe5ef;--navy:#172554;--blue:#2563eb;--cyan:#0891b2;--purple:#7c3aed;--orange:#f97316;--red:#dc2626;--green:#059669;--greenbg:#e9f9f2;--redbg:#fff0f0;--amber:#d97706;--amberbg:#fff7e6}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#f4f7fb 0%,#eef4ff 48%,#f8f5ff 100%);color:var(--ink);font:14px Arial,Helvetica,sans-serif}
+.wrap{max-width:1100px;margin:0 auto;padding:28px 22px 45px}.header{position:relative;overflow:hidden;background:linear-gradient(120deg,#172554 0%,#1d4ed8 52%,#7c3aed 100%);color:#fff;border:0;border-radius:14px;padding:28px 30px;display:flex;justify-content:space-between;gap:20px;align-items:center;box-shadow:0 12px 30px rgba(37,99,235,.16)}
+.header:after{content:"";position:absolute;width:220px;height:220px;border-radius:50%;right:-70px;top:-120px;background:rgba(255,255,255,.10)}
+h1{margin:0;font-size:28px;letter-spacing:-.02em}.subtitle{margin-top:7px;color:#dbeafe;font-size:13px}.status{position:relative;z-index:1;padding:11px 16px;border-radius:999px;font-weight:900;font-size:13px;letter-spacing:.03em;box-shadow:0 4px 14px rgba(0,0,0,.12)}
+.status.pass{background:#d1fae5;color:#047857}.status.fail{background:#fee2e2;color:#b91c1c}
+.section{background:rgba(255,255,255,.96);border:1px solid var(--line);border-radius:12px;margin-top:16px;padding:22px;box-shadow:0 5px 18px rgba(23,37,84,.05)}.title{font-weight:900;font-size:14px;margin-bottom:16px;padding-left:12px;border-left:4px solid var(--blue);color:var(--navy);letter-spacing:.01em}
+.summary{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.field{border:1px solid var(--line);border-top:3px solid var(--cyan);border-radius:9px;padding:13px 14px;background:linear-gradient(180deg,#fff,#f8fbff)}.field:nth-child(2){border-top-color:var(--purple)}.field:nth-child(3){border-top-color:var(--orange)}.field label{display:block;color:var(--muted);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.06em;margin-bottom:7px}.field strong{font-size:13px;word-break:break-word;line-height:1.45}
+.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:9px}table{width:100%;border-collapse:collapse;background:#fff}th{background:linear-gradient(90deg,#eaf2ff,#f2edff);text-align:left;font-size:10px;text-transform:uppercase;color:#475467;padding:12px;letter-spacing:.04em;white-space:nowrap}td{padding:12px;border-bottom:1px solid #edf0f5}tbody tr:nth-child(even){background:#fafcff}tbody tr:hover{background:#f1f6ff}tbody tr:last-child td{border-bottom:0}
+.pass-text{color:var(--green);font-weight:900}.fail-text{color:var(--red);font-weight:900}.inc-text{color:var(--amber);font-weight:900}
+.issue{padding:13px 14px;margin:8px 0;border:1px solid #e5eaf2;border-left:4px solid var(--red);border-radius:8px;background:#fffafa}.issue:last-child{margin-bottom:0}.issue strong{display:block;line-height:1.45}.issue span{display:block;color:var(--muted);margin-top:5px;font-size:12px;line-height:1.45}
+.empty{color:var(--green);background:var(--greenbg);border:1px solid #b9ead5;padding:13px;border-radius:8px;font-weight:800}.footer{text-align:center;color:var(--muted);font-size:11px;line-height:1.7;margin-top:26px;padding:10px 0}.footer div+div{margin-top:5px}
+@media(max-width:700px){.header{display:block;padding:23px}.status{display:inline-block;margin-top:16px}.summary{grid-template-columns:1fr}.wrap{padding:15px 10px}.section{padding:16px}}
+@media print{body{background:#fff}.wrap{max-width:none;padding:0}.section,.header{break-inside:avoid;box-shadow:none}.header{print-color-adjust:exact;-webkit-print-color-adjust:exact}}
 </style></head><body><div class="wrap">
 """);
 
