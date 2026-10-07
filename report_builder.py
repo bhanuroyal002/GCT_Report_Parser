@@ -137,12 +137,6 @@ h1{margin:0;font-size:28px;letter-spacing:-.02em}.subtitle{margin-top:7px;color:
             out.append(
                 f"<div class='issue'><strong>{e(item.get('suite'))} {e(item.get('module'))}</strong>"
             )
-            failed_modules = num(item.get("failed"))
-            reason = text(item.get("reason"))
-            if failed_modules > 0:
-                out.append(f"<span>fail={failed_modules}</span>")
-            elif reason:
-                out.append(f"<span>{e(reason)}</span>")
             out.append("</div>")
     out.append("</section>")
 
@@ -155,9 +149,6 @@ h1{margin:0;font-size:28px;letter-spacing:-.02em}.subtitle{margin-top:7px;color:
                 f"<div class='issue'><strong> - {e(failure.get('suite'))} "
                 f"{e(failure.get('module'))} :: {e(failure.get('testCase'))}</strong>"
             )
-            details = text(failure.get("details"))
-            if details:
-                out.append(f"<span>{e(details)}</span>")
             out.append("</div>")
     out.append("</section>")
 
