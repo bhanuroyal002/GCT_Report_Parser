@@ -60,7 +60,7 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
             for (int i = 0; i < builds.size(); i++) {
                 Map<String, Object> build = builds.get(i);
                 h.append("<tr><td><strong>Build ").append((char) ('A' + i)).append("</strong></td>")
-                        .append("<td>").append(e(text(build.get("suites")))).append("</td>")
+                        .append("<td>").append(e(joinValues(build.get("suites")))).append("</td>")
                         .append("<td>").append(e(text(build.get("fingerprint")))).append("</td>")
                         .append("<td>").append(e(text(build.get("androidVersion")))).append("</td>")
                         .append("<td>").append(e(text(build.get("securityPatch")))).append("</td></tr>");
@@ -141,6 +141,16 @@ h1{margin:0;font-size:26px}.subtitle{margin-top:5px;color:var(--muted)}.status{p
         h.append("<div class='footer'>Generated ").append(e(generated))
                 .append(" · GCT Report Parser</div></div></body></html>");
         return h.toString();
+    }
+
+    private static String joinValues(Object value) {
+        if (value instanceof Collection<?> collection) {
+            return collection.stream()
+                    .map(String::valueOf)
+                    .filter(v -> !v.isBlank())
+                    .collect(java.util.stream.Collectors.joining(", "));
+        }
+        return text(value);
     }
 
     private static String field(String label, String value) {
