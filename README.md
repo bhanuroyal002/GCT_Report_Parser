@@ -63,36 +63,35 @@ data/gct_report_parser.db
 
 ## Installation
 
-Clone the repository:
+For a fresh Linux/WSL user, the application can now be started with **one command** after cloning:
 
 ```bash
 git clone https://github.com/bhanuroyal002/GCT_Report_Parser.git
 cd GCT_Report_Parser
+./start.sh
 ```
 
-Create a Python virtual environment:
+`start.sh` automatically:
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
+1. Checks for Python 3.10 or newer.
+2. Creates the local `.venv` on the first run.
+3. Installs the dependencies from `requirements.txt`.
+4. Reuses the existing environment on later runs.
+5. Reinstalls dependencies automatically when `requirements.txt` changes.
+6. Starts the Flask application on `127.0.0.1:8080`.
 
-Install the application dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Start the application:
-
-```bash
-python app.py
-```
+The user does **not** need to manually create or activate the virtual environment or run `pip install`.
 
 Open:
 
 ```text
 http://127.0.0.1:8080
+```
+
+For later starts, simply run:
+
+```bash
+./start.sh
 ```
 
 Flask's development server is suitable for local development; do not use it as the production server. citeturn0search1turn0search2
@@ -290,6 +289,7 @@ Back up this file if historical analysis data needs to be preserved.
 
 ```text
 GCT_Report_Parser/
+├── start.sh
 ├── app.py
 ├── parser.py
 ├── history.py
