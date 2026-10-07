@@ -171,23 +171,39 @@ async function loadHistory(){
   }
 }
 async function openHistoryRun(runId,download){
+  let win=null;
   try{
+    // Open the tab synchronously from the button click so browser popup
+    // blockers do not reject the historical dashboard after the async fetch.
+    if(!download){
+      win=window.open("about:blank","_blank");
+      if(!win)throw new Error("Popup blocked. Please allow popups for this site.");
+      win.document.title="Preparing dashboard…";
+      win.document.body.innerHTML="<p style='font-family:Arial;padding:24px'>Preparing historical dashboard…</p>";
+    }
+
     const r=await fetch("/api/history/"+encodeURIComponent(runId));
     if(!r.ok)throw new Error("Historical run not found");
     const dashboard=await r.json();
     const url=await getDashboardUrl(dashboard);
+
     if(download){
       const a=document.createElement("a");
       a.href=url;
       a.download="gct-certification-dashboard-"+runId+".html";
+      a.style.display="none";
+      document.body.appendChild(a);
       a.click();
+      a.remove();
       setTimeout(()=>URL.revokeObjectURL(url),1000);
     }else{
-      const win=window.open(url,"_blank");
-      if(!win)throw new Error("Popup blocked. Please allow popups for this site.");
+      win.location.href=url;
       setTimeout(()=>URL.revokeObjectURL(url),60000);
     }
-  }catch(e){alert(e.message)}
+  }catch(e){
+    if(win && !win.closed) win.close();
+    alert(e.message);
+  }
 }
 $("publishBtn").addEventListener("click",async()=>{
   const b=$("publishBtn");b.disabled=true;b.textContent="Preparing dashboard…";
