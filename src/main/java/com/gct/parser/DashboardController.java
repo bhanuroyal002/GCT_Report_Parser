@@ -20,6 +20,11 @@ import java.util.zip.ZipInputStream;
 @RequestMapping("/api")
 public class DashboardController {
     private static final List<String> SUPPORTED = List.of("CTS", "GTS", "TVTS", "STS", "VTS", "CTS-on-GSI", "CTS-Verifier");
+    private final AnalysisHistoryService historyService;
+
+    public DashboardController(AnalysisHistoryService historyService) {
+        this.historyService = historyService;
+    }
 
     @PostMapping(value = "/analyze", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> analyze(@RequestParam("files") MultipartFile[] files) {
@@ -188,6 +193,13 @@ public class DashboardController {
         out.put("incompleteModules", fingerprintMismatch ? List.of() : incomplete);
         out.put("failures", fingerprintMismatch ? List.of() : failures);
 
+        // A successful analysis run is one that produced at least one recognized
+        // Tradefed report. Test failures or build mismatch are still valid
+        // analysis results and are therefore retained in history.
+        if (!allReports.isEmpty()) {
+            historyService.save(out);
+        }
+
         return ResponseEntity.ok(out);
     }
 
@@ -211,6 +223,21 @@ public class DashboardController {
     private static String normalizeFingerprint(String fingerprint) {
         String value = firstNonBlank(fingerprint, "");
         return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    @GetMapping("/history")
+    public Map<String, Object> history() {
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("maxRuns", historyService.maxRuns());
+        out.put("runs", historyService.summaries());
+        return out;
+    }
+
+    @GetMapping("/history/{runId}")
+    public ResponseEntity<Map<String, Object>> historyRun(@PathVariable String runId) {
+        return historyService.find(runId)
+                .map(ResponseEntity::ok)
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
     @GetMapping("/dashboard")
