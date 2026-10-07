@@ -1099,6 +1099,8 @@ public class DashboardController {
         String release;
         String sdk;
         String abis;
+        String buildId;
+        String buildType;
         List<Map<String, Object>> moduleDetails = List.of();
         final List<TestResultData> testResults = new ArrayList<>();
         final Map<String, Boolean> moduleDoneStates = new LinkedHashMap<>();
