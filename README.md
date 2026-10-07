@@ -32,21 +32,6 @@ This repository is now **100% Python for the application layer**.
 - Python standard library for ZIP/XML/JSON/database processing
 - HTML/CSS/JavaScript frontend
 
-### Removed
-
-The project no longer requires:
-
-- Java
-- Maven
-- Spring Boot
-- PostgreSQL
-- Docker
-- Docker Compose
-- Node.js
-- Python Android/ADB tooling
-
-**Maven is not required.**
-
 ## Requirements
 
 Install:
